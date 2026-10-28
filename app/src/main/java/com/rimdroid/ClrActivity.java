@@ -411,15 +411,15 @@ public class ClrActivity extends Activity {
     }
 
     /**
-     * One finger is the mouse. A tap is a left click; a finger held still is a right click (orders
+     * One finger is the mouse. A tap is a left click (or the latched tap-replace mouse button); a finger held still is a right click (orders
      * menu). A finger that moves pans the map with the middle button held, as RimWorld does with a
      * mouse, so the map follows the finger one to one (Settings → "Drag the map to pan", on by
      * default; 1.7 had no finger panning at all, 2026-10-22); with that setting off it drags with
      * the left button held (box selection, sliders).
-     * Two fingers pinch-zoom: RimWorld zooms with the mouse wheel, so the pinch turns into wheel
-     * steps, with the cursor between the fingers. The left button goes down only once the finger
+     * Two fingers pinch-zoom (wheel steps) and drag-pan the map (middle button held at their midpoint),
+     * with the cursor between the fingers. Buttons go down only once a finger or midpoint
      * moves or lifts, so a second finger landing first makes a clean pinch with no click.
-     * Touches act where the finger is, but the drawn cursor (the on-screen controls' stick and
+     * Touches act where the finger is and hide the drawn cursor, while its position (for the stick and
      * trackpad) stays where it was, as on the other engines: players who aim with the stick lost the
      * pointer after every tap (1.6 native engine, 2026-10-13).
      */
@@ -429,7 +429,8 @@ public class ClrActivity extends Activity {
     private final class TouchInput extends android.view.ScaleGestureDetector.SimpleOnScaleGestureListener {
         private static final long LONG_PRESS_MS = 350;   // as on the other engines
         private static final float STEP = 1.12f;   // pinch scale change per wheel step
-        private boolean pending, pressed, gesture, rightClicked;
+        private boolean pending, pressed, gesture, rightClicked, twoPanning;
+        private float twoDownX, twoDownY, lastFocusX, lastFocusY;
         private int dragButton;   // the button a moving finger holds: 2 middle (pan) or 0 left
         private float downX, downY, scaleAcc = 1f;
         private final Runnable longPress = () -> {
@@ -437,7 +438,7 @@ public class ClrActivity extends Activity {
             pending = false;
             rightClicked = true;
             glfwMouse(1, 1, gx(downX), gy(downY));
-            glfwMouse(1, 0, gx(downX), gy(downY));
+            ui.postDelayed(() -> glfwMouse(1, 0, gx(downX), gy(downY)), 50);
             input.controls.maybeHaptic();
         };
 
@@ -448,7 +449,15 @@ public class ClrActivity extends Activity {
         private float gx(float x) { return surface.getWidth() > 0 && bufferW > 0 ? x * bufferW / surface.getWidth() : x; }
         private float gy(float y) { return surface.getHeight() > 0 && bufferH > 0 ? y * bufferH / surface.getHeight() : y; }
 
-        private void pressLeft() { press(0); }
+        private void tapLeft() {
+            pending = false;
+            int code = input != null ? input.controls.getTapMouseButton() : 1;
+            final int btn = code == 3 ? 1 : (code == 2 ? 2 : 0);
+            final float tx = gx(downX), ty = gy(downY);
+            pointerTo(downX, downY);
+            glfwMouse(btn, 1, tx, ty);
+            ui.postDelayed(() -> glfwMouse(btn, 0, tx, ty), 50);
+        }
 
         private void press(int button) {
             pending = false;
@@ -462,32 +471,57 @@ public class ClrActivity extends Activity {
             float x = e.getX(), y = e.getY();
             switch (e.getActionMasked()) {
                 case android.view.MotionEvent.ACTION_DOWN:
-                    gesture = false; pressed = false; rightClicked = false; pending = true;
+                    if (input != null) input.controls.setCursorVisible(false);
+                    gesture = false; pressed = false; rightClicked = false; pending = true; twoPanning = false;
                     downX = x; downY = y;                     // the clicks carry the finger's position
+                    pointerTo(x, y);
                     ui.postDelayed(longPress, LONG_PRESS_MS);
                     break;
                 case android.view.MotionEvent.ACTION_POINTER_DOWN:
                     ui.removeCallbacks(longPress);
                     pending = false;
-                    if (pressed) { glfwMouse(dragButton, 0, gx(downX), gy(downY)); pressed = false; }
+                    if (pressed) { glfwMouse(dragButton, 0, gx(x), gy(y)); pressed = false; }
+                    if (twoPanning) { glfwMouse(2, 0, gx(lastFocusX), gy(lastFocusY)); twoPanning = false; }
+                    if (e.getPointerCount() >= 2) {
+                        twoDownX = lastFocusX = (e.getX(0) + e.getX(1)) * 0.5f;
+                        twoDownY = lastFocusY = (e.getY(0) + e.getY(1)) * 0.5f;
+                    }
                     gesture = true;
                     scaleAcc = 1f;
                     break;
                 case android.view.MotionEvent.ACTION_MOVE:
-                    if (gesture || rightClicked) break;
+                    if (gesture) {
+                        if (e.getPointerCount() >= 2) {
+                            float fx = (e.getX(0) + e.getX(1)) * 0.5f, fy = (e.getY(0) + e.getY(1)) * 0.5f;
+                            lastFocusX = fx; lastFocusY = fy;
+                            if (!twoPanning && Math.hypot(fx - twoDownX, fy - twoDownY) > 6 * getResources().getDisplayMetrics().density) {
+                                pointerTo(fx, fy);
+                                glfwMouse(2, 1, gx(fx), gy(fy));
+                                twoPanning = true;
+                            } else if (twoPanning) {
+                                pointerTo(fx, fy);
+                            }
+                        }
+                        break;
+                    }
+                    if (rightClicked) break;
                     if (pending && Math.hypot(x - downX, y - downY) > 12 * getResources().getDisplayMetrics().density) {
                         ui.removeCallbacks(longPress);
                         press(dragPan ? 2 : 0);
                     }
                     if (pressed) pointerTo(x, y);
                     break;
+                case android.view.MotionEvent.ACTION_POINTER_UP:
+                    if (twoPanning) { glfwMouse(2, 0, gx(lastFocusX), gy(lastFocusY)); twoPanning = false; }
+                    break;
                 case android.view.MotionEvent.ACTION_UP:
                 case android.view.MotionEvent.ACTION_CANCEL:
                     ui.removeCallbacks(longPress);
                     if (!gesture && !rightClicked) {
-                        if (pending) pressLeft();             // a tap
+                        if (pending) tapLeft();               // a tap
                         if (pressed) glfwMouse(dragButton, 0, gx(x), gy(y));
                     }
+                    if (twoPanning) { glfwMouse(2, 0, gx(lastFocusX), gy(lastFocusY)); twoPanning = false; }
                     pending = false; pressed = false; gesture = false; rightClicked = false;
                     break;
             }

@@ -208,10 +208,20 @@ public class ControlsEditorActivity extends Activity implements InputControlsVie
             addBindingSpinner("Action", b.getBinding(), binding -> {
                 b.setBinding(binding);
                 com.rimdroid.input.IconPacks.followPack(this, controls, b);   // the pack's icon for the new action
+                buildPanel(b);
             });
             addText("Label", b.getText(), b::setText);
             addShapeChoice(b);
-            addCheckbox("Toggle (latch on/off)", b.isToggle(), b::setToggle);
+            addCheckbox("Toggle (latch on/off)", b.isToggle(), t -> {
+                b.setToggle(t);
+                if (t && b.isTapReplace()) { b.setTapReplace(false); buildPanel(b); }
+            });
+            if (b.getBinding().kind == Binding.Kind.MOUSE) {
+                addCheckbox("Replace screen tap", b.isTapReplace(), r -> {
+                    b.setTapReplace(r);
+                    if (r && b.isToggle()) { b.setToggle(false); buildPanel(b); }
+                });
+            }
             addIconRow(b);
         } else if (el instanceof MouseStickElement) {
             MouseStickElement m = (MouseStickElement) el;

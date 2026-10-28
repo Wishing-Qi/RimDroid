@@ -303,6 +303,7 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
     private String instanceName;   // the launched instance (null for the smoke test)
     private final android.os.Handler ui = new android.os.Handler(android.os.Looper.getMainLooper());
     private float tapDownX, tapDownY; private long tapDownT; private boolean tapMoved;
+    private boolean twoPanning; private float twoDownX, twoDownY, twoLastX, twoLastY;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -564,14 +565,34 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
     @Override
     public boolean onTouchEvent(MotionEvent e) {
         if (scaleDetector != null) scaleDetector.onTouchEvent(e);
-        if (e.getPointerCount() >= 2 || scaling) {   // pinch-zoom
+        if (e.getPointerCount() >= 2 || scaling) {   // pinch-zoom + two-finger pan
+            int ma = e.getActionMasked();
+            if (ma == MotionEvent.ACTION_POINTER_DOWN && e.getPointerCount() >= 2) {
+                if (twoPanning) { try { buttonInput(2, 0, gameX(twoLastX), gameY(twoLastY)); } catch (UnsatisfiedLinkError ig) {} twoPanning = false; }
+                twoDownX = twoLastX = (e.getX(0) + e.getX(1)) * 0.5f;
+                twoDownY = twoLastY = (e.getY(0) + e.getY(1)) * 0.5f;
+            } else if (ma == MotionEvent.ACTION_MOVE && e.getPointerCount() >= 2) {
+                float fx = (e.getX(0) + e.getX(1)) * 0.5f, fy = (e.getY(0) + e.getY(1)) * 0.5f;
+                twoLastX = fx; twoLastY = fy;
+                float d2 = getResources().getDisplayMetrics().density;
+                if (!twoPanning && Math.hypot(fx - twoDownX, fy - twoDownY) > 6 * d2) {
+                    try { buttonInput(2, 1, gameX(fx), gameY(fy)); } catch (UnsatisfiedLinkError ig) {}
+                    twoPanning = true;
+                } else if (twoPanning) {
+                    try { touchInput(2, gameX(fx), gameY(fy)); } catch (UnsatisfiedLinkError ig) {}
+                }
+            } else if (ma == MotionEvent.ACTION_POINTER_UP || ma == MotionEvent.ACTION_UP || ma == MotionEvent.ACTION_CANCEL) {
+                if (twoPanning) { try { buttonInput(2, 0, gameX(twoLastX), gameY(twoLastY)); } catch (UnsatisfiedLinkError ig) {} twoPanning = false; }
+            }
             ui.removeCallbacks(longPressRunnable);   // a 2nd finger cancels the pending right-click
             releasePan(); panGestureOwned = false; return true;
         }
         float d = getResources().getDisplayMetrics().density;
         switch (e.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
+                if (controls != null) controls.setCursorVisible(false);
                 tapDownX = e.getX(); tapDownY = e.getY(); tapDownT = System.currentTimeMillis(); tapMoved = false;
+                try { touchInput(0, gameX(tapDownX), gameY(tapDownY)); } catch (UnsatisfiedLinkError ig) {}
                 lastPanX = e.getX(); lastPanY = e.getY();
                 panGestureOwned = true;     // we received this gesture's DOWN → it's a real map touch
                 longPressFired = false;
@@ -602,20 +623,22 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
             }
             case MotionEvent.ACTION_UP:
                 releasePan();
+                if (twoPanning) { try { buttonInput(2, 0, gameX(twoLastX), gameY(twoLastY)); } catch (UnsatisfiedLinkError ig) {} twoPanning = false; }
                 ui.removeCallbacks(longPressRunnable);   // released → no long-press
                 // A quick tap = left click. If the long-press already fired a right-click, do NOT
                 // also left-click (that would double-act). tapMoved/scaling still exclude drags/pinch.
                 if (panGestureOwned && !tapMoved && !scaling && !longPressFired
                         && System.currentTimeMillis() - tapDownT < 250) {
-                    final int gx = gameX(e.getX()), gy = gameY(e.getY());
+                    final int gx = gameX(tapDownX), gy = gameY(tapDownY);
                     try {
-                        buttonInput(1, 1, gx, gy);   // direct tap = left click at finger
-                        ui.postDelayed(() -> buttonInput(1, 0, gx, gy), 50);
+                        buttonInput(controls != null ? controls.getTapMouseButton() : 1, 1, gx, gy);   // direct tap = left click at finger
+                        ui.postDelayed(() -> buttonInput(controls != null ? controls.getTapMouseButton() : 1, 0, gx, gy), 50);
                     } catch (UnsatisfiedLinkError ig) {}
                 }
                 panGestureOwned = false;
                 return true;
             case MotionEvent.ACTION_CANCEL:
+                if (twoPanning) { try { buttonInput(2, 0, gameX(twoLastX), gameY(twoLastY)); } catch (UnsatisfiedLinkError ig) {} twoPanning = false; }
                 releasePan();
                 ui.removeCallbacks(longPressRunnable);
                 panGestureOwned = false;

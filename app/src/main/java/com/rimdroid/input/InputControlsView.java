@@ -249,6 +249,33 @@ public class InputControlsView extends View {
         }
     }
 
+    /** Toggle a tap-replace mouse button on/off (mutually exclusive across mouse buttons). */
+    public void toggleTapMouseButton(ButtonElement target) {
+        boolean next = !target.isToggledOn();
+        for (ControlElement el : elements) {
+            if (el instanceof ButtonElement) {
+                ButtonElement b = (ButtonElement) el;
+                if (b.isTapReplace() && b.getBinding().kind == Binding.Kind.MOUSE) {
+                    b.setToggledOn(false);
+                }
+            }
+        }
+        target.setToggledOn(next);
+        invalidate();
+    }
+
+    public int getTapMouseButton() {
+        for (ControlElement el : elements) {
+            if (el instanceof ButtonElement) {
+                ButtonElement b = (ButtonElement) el;
+                if (b.isTapReplace() && b.isToggledOn() && b.getBinding().kind == Binding.Kind.MOUSE) {
+                    return b.getBinding().code;
+                }
+            }
+        }
+        return 1;
+    }
+
     /** Quick press+release of a binding at the cursor (used by mouse-stick tap). */
     public void tapCursor(Binding b) {
         inject(b, true);

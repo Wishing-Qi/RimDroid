@@ -27,6 +27,7 @@ public class ControlElementDescription {
     public String[] bindings;
 
     public boolean isToggle;        // BUTTON: hold (false) vs toggle (true)
+    public boolean isTapReplace;    // BUTTON (mouse): latch as screen-tap button instead of holding
     public float   sensitivity;     // MOUSE_STICK cursor speed (0.25..8.0)
 
     /** BUTTON: picture shown instead of the label — a file name in IconPacks.iconsDir(), or null. */

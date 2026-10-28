@@ -22,6 +22,7 @@ public class ButtonElement extends ControlElement {
     private Shape shape;
     private String text;
     private boolean isToggle;
+    private boolean isTapReplace;
     private Binding binding;
     // Picture shown instead of the label (IconPacks); the label is the fallback when the file is gone.
     private String icon;
@@ -45,6 +46,7 @@ public class ButtonElement extends ControlElement {
         this.shape = parseShape(d.shape);
         this.text = d.text != null ? d.text : "";
         this.isToggle = d.isToggle;
+        this.isTapReplace = d.isTapReplace;
         this.binding = (d.bindings != null && d.bindings.length > 0)
                 ? Binding.fromName(d.bindings[0], Binding.MOUSE_LEFT) : Binding.MOUSE_LEFT;
         this.icon = d.icon;
@@ -89,7 +91,9 @@ public class ButtonElement extends ControlElement {
                 if (pointerId < 0 && isPointOver(e.getX(idx), e.getY(idx))) {
                     pointerId = pid;
                     view.maybeHaptic();   // light tick on press, only if the user enabled haptics
-                    if (isToggle) {
+                    if (isTapReplace && binding.kind == Binding.Kind.MOUSE) {
+                        view.toggleTapMouseButton(this);
+                    } else if (isToggle) {
                         toggledOn = !toggledOn;
                         view.inject(binding, toggledOn);
                     } else {
@@ -104,7 +108,7 @@ public class ButtonElement extends ControlElement {
             case MotionEvent.ACTION_CANCEL: {
                 boolean cancel = (action == MotionEvent.ACTION_CANCEL);
                 if (cancel || pid == pointerId) {
-                    if (!isToggle) view.inject(binding, false);
+                    if (!isToggle && !(isTapReplace && binding.kind == Binding.Kind.MOUSE)) view.inject(binding, false);
                     pointerId = -1;
                     view.invalidate();
                     return !cancel;
@@ -116,20 +120,21 @@ public class ButtonElement extends ControlElement {
     }
 
     @Override public void reset() {
-        if (pointerId >= 0 && !isToggle) view.inject(binding, false);
+        if (pointerId >= 0 && !isToggle && !(isTapReplace && binding.kind == Binding.Kind.MOUSE)) view.inject(binding, false);
         if (isToggle && toggledOn) { view.inject(binding, false); toggledOn = false; }
+        if (isTapReplace && toggledOn) { toggledOn = false; }
         pointerId = -1;
     }
 
     /** Clear a stale HOLD press but keep an intentional toggle latch (it should survive across taps). */
     @Override public void clearStalePointer() {
-        if (pointerId >= 0 && !isToggle) view.inject(binding, false);
+        if (pointerId >= 0 && !isToggle && !(isTapReplace && binding.kind == Binding.Kind.MOUSE)) view.inject(binding, false);
         pointerId = -1;
     }
 
     @Override public void draw(Canvas c) {
         float cx = centerX(), cy = centerY(), hw = halfW(), hh = halfH();
-        boolean active = (pointerId >= 0) || (isToggle && toggledOn);
+        boolean active = (pointerId >= 0) || ((isToggle || isTapReplace) && toggledOn);
         int baseA = alpha;
         fill.setColor(0x00FFFFFF | ((active ? Math.min(255, baseA + 60) : (int)(baseA * 0.35f)) << 24));
         stroke.setColor(0x00FFFFFF | (Math.min(255, baseA + 40) << 24));
@@ -176,6 +181,7 @@ public class ButtonElement extends ControlElement {
         d.shape = shape.name();
         d.text = text;
         d.isToggle = isToggle;
+        d.isTapReplace = isTapReplace;
         d.bindings = new String[]{ binding.name() };
         d.icon = icon;
         d.iconNoTint = iconNoTint;
@@ -188,7 +194,11 @@ public class ButtonElement extends ControlElement {
     public Binding getBinding() { return binding; }
     public void setBinding(Binding b) { reset(); this.binding = b; }
     public boolean isToggle() { return isToggle; }
+    public boolean isToggledOn() { return toggledOn; }
+    public void setToggledOn(boolean on) { this.toggledOn = on; }
     public void setToggle(boolean t) { reset(); this.isToggle = t; }
+    public boolean isTapReplace() { return isTapReplace; }
+    public void setTapReplace(boolean r) { reset(); this.isTapReplace = r; }
     public String getText() { return text; }
     public void setText(String t) { this.text = t != null ? t : ""; }
     public Shape getShape() { return shape; }

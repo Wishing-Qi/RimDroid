@@ -288,6 +288,8 @@ public class NativeGameOverlay extends FrameLayout
     private ScaleGestureDetector scaleDetector;
     private boolean scaling, tapMoved, longPressFired, panGestureOwned;
     private float tapDownX, tapDownY, lastPanX, lastPanY;
+    private boolean twoPanning;
+    private float twoDownX, twoDownY, twoLastX, twoLastY;
     private long tapDownT;
     private final boolean[] panHeld = new boolean[4];   // 0 = up, 1 = right, 2 = down, 3 = left
     private static final Binding[] PAN_KEYS = { Binding.KEY_UP, Binding.KEY_RIGHT, Binding.KEY_DOWN, Binding.KEY_LEFT };
@@ -339,7 +341,27 @@ public class NativeGameOverlay extends FrameLayout
         if (isMouse(e)) return mouseTouch(e);
         if (scaleDetector == null) scaleDetector = new ScaleGestureDetector(getContext(), new ScaleListener());
         scaleDetector.onTouchEvent(e);
-        if (e.getPointerCount() >= 2 || scaling) {   // pinch: never a tap, a long press or a pan
+        if (e.getPointerCount() >= 2 || scaling) {   // pinch + two-finger pan: never a tap, a long press or a single-finger pan
+            int ma = e.getActionMasked();
+            if (ma == MotionEvent.ACTION_POINTER_DOWN && e.getPointerCount() >= 2) {
+                if (twoPanning) { button(2, false, gameX(twoLastX) - boxLeft, gameY(twoLastY) - boxTop); twoPanning = false; }
+                twoDownX = twoLastX = (e.getX(0) + e.getX(1)) * 0.5f;
+                twoDownY = twoLastY = (e.getY(0) + e.getY(1)) * 0.5f;
+            } else if (ma == MotionEvent.ACTION_MOVE && e.getPointerCount() >= 2) {
+                float fx = (e.getX(0) + e.getX(1)) * 0.5f, fy = (e.getY(0) + e.getY(1)) * 0.5f;
+                twoLastX = fx; twoLastY = fy;
+                float d2 = getResources().getDisplayMetrics().density;
+                if (!twoPanning && Math.hypot(fx - twoDownX, fy - twoDownY) > 6 * d2) {
+                    int bx = gameX(fx) - boxLeft, by = gameY(fy) - boxTop;
+                    touch(bx, by);
+                    button(2, true, bx, by);
+                    twoPanning = true;
+                } else if (twoPanning) {
+                    touch(gameX(fx) - boxLeft, gameY(fy) - boxTop);
+                }
+            } else if (ma == MotionEvent.ACTION_POINTER_UP || ma == MotionEvent.ACTION_UP || ma == MotionEvent.ACTION_CANCEL) {
+                if (twoPanning) { button(2, false, gameX(twoLastX) - boxLeft, gameY(twoLastY) - boxTop); twoPanning = false; }
+            }
             ui.removeCallbacks(longPressRunnable);
             releasePan();
             panGestureOwned = false;
@@ -348,7 +370,9 @@ public class NativeGameOverlay extends FrameLayout
         float d = getResources().getDisplayMetrics().density;
         switch (e.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
+                controls.setCursorVisible(false);
                 tapDownX = e.getX(); tapDownY = e.getY(); tapDownT = System.currentTimeMillis();
+                touch(gameX(tapDownX) - boxLeft, gameY(tapDownY) - boxTop);
                 lastPanX = e.getX(); lastPanY = e.getY();
                 tapMoved = false; longPressFired = false; panGestureOwned = true;
                 ui.removeCallbacks(longPressRunnable);
@@ -377,12 +401,14 @@ public class NativeGameOverlay extends FrameLayout
             case MotionEvent.ACTION_UP:
                 releasePan();
                 ui.removeCallbacks(longPressRunnable);
+                if (twoPanning) { button(2, false, gameX(twoLastX) - boxLeft, gameY(twoLastY) - boxTop); twoPanning = false; }
                 if (panGestureOwned && !tapMoved && !scaling && !longPressFired
                         && System.currentTimeMillis() - tapDownT < 250)
-                    click(1, gameX(e.getX()), gameY(e.getY()));
+                    click(controls.getTapMouseButton(), gameX(tapDownX), gameY(tapDownY));
                 panGestureOwned = false;
                 return true;
             case MotionEvent.ACTION_CANCEL:
+                if (twoPanning) { button(2, false, gameX(twoLastX) - boxLeft, gameY(twoLastY) - boxTop); twoPanning = false; }
                 releasePan();
                 ui.removeCallbacks(longPressRunnable);
                 panGestureOwned = false;
@@ -418,7 +444,7 @@ public class NativeGameOverlay extends FrameLayout
 
     @Override public boolean onGenericMotion(View v, MotionEvent event) {
         if (gamepad != null && gamepad.onMotion(event)) return true;
-        return isMouse(event) && mouseMotion(event);
+        return (isMouse(event) && mouseMotion(event)) || (event.getSource() & InputDevice.SOURCE_STYLUS) == InputDevice.SOURCE_STYLUS;
     }
 
     // ------------------------------------------------------------------ physical mouse
