@@ -282,13 +282,14 @@ public class NativeGameOverlay extends FrameLayout
 
     // ------------------------------------------------------------------ touches on the bare map
 
-    // As GameActivity: a quick tap is a left click, a finger held still a right click, a one-finger
-    // drag pans the camera (held arrow keys; the world follows the finger), a pinch is the wheel.
+    // As GameActivity: a quick tap is a left click (or active tap-replace button), a finger held still a right click, a one-finger
+    // drag holds the active tap-replace button or pans the camera (held arrow keys), two fingers pinch-zoom and middle-drag pan.
     private static final long LONG_PRESS_MS = 350;
     private ScaleGestureDetector scaleDetector;
     private boolean scaling, tapMoved, longPressFired, panGestureOwned;
     private float tapDownX, tapDownY, lastPanX, lastPanY;
     private boolean twoPanning;
+    private int dragBtnPressed;
     private float twoDownX, twoDownY, twoLastX, twoLastY;
     private long tapDownT;
     private final boolean[] panHeld = new boolean[4];   // 0 = up, 1 = right, 2 = down, 3 = left
@@ -385,7 +386,17 @@ public class NativeGameOverlay extends FrameLayout
                     if (!tapMoved) ui.removeCallbacks(longPressRunnable);   // a drag, not a long press
                     tapMoved = true;
                 }
-                if (tapMoved && dragPanEnabled) {
+                int rep = controls.getActiveTapReplaceButton();
+                if (tapMoved && rep != 0) {
+                    if (dragBtnPressed == 0) {
+                        dragBtnPressed = rep;
+                        int bx = gameX(tapDownX) - boxLeft, by = gameY(tapDownY) - boxTop;
+                        touch(bx, by);
+                        button(dragBtnPressed, true, bx, by);
+                    }
+                    lastPanX = e.getX(); lastPanY = e.getY();
+                    touch(gameX(lastPanX) - boxLeft, gameY(lastPanY) - boxTop);
+                } else if (tapMoved && dragPanEnabled) {
                     // Only while the finger really slides: a displaced but still finger must not keep
                     // the camera accelerating.
                     boolean sliding = Math.abs(e.getX() - lastPanX) + Math.abs(e.getY() - lastPanY) > 2 * d;
@@ -432,6 +443,10 @@ public class NativeGameOverlay extends FrameLayout
     }
 
     private void releasePan() {
+        if (dragBtnPressed != 0) {
+            button(dragBtnPressed, false, gameX(lastPanX) - boxLeft, gameY(lastPanY) - boxTop);
+            dragBtnPressed = 0;
+        }
         ui.removeCallbacks(panIdleRelease);
         for (int i = 0; i < 4; i++) setPan(i, false);
     }

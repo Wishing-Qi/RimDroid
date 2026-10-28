@@ -302,7 +302,8 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
     private com.rimdroid.input.MouseKeyboardHandler mouseKb;  // physical mouse + keyboard -> SDL injection
     private String instanceName;   // the launched instance (null for the smoke test)
     private final android.os.Handler ui = new android.os.Handler(android.os.Looper.getMainLooper());
-    private float tapDownX, tapDownY; private long tapDownT; private boolean tapMoved;
+    private float tapDownX, tapDownY;
+    private int dragBtnPressed; private long tapDownT; private boolean tapMoved;
     private boolean twoPanning; private float twoDownX, twoDownY, twoLastX, twoLastY;
 
     @Override
@@ -561,7 +562,7 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
         if (hasFocus) hideSystemBars();   // re-hide after dialogs / focus regain
     }
 
-    // Pinch-zoom: only non-stick touches reach here (overlay returns false for them).
+    // Pinch-zoom and two-finger pan: only non-stick touches reach here (overlay returns false for them).
     @Override
     public boolean onTouchEvent(MotionEvent e) {
         if (scaleDetector != null) scaleDetector.onTouchEvent(e);
@@ -608,7 +609,15 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
                     if (!tapMoved) ui.removeCallbacks(longPressRunnable);   // it's a drag, not a long-press
                     tapMoved = true;
                 }
-                if (tapMoved && dragPanEnabled) {
+                int rep = controls != null ? controls.getActiveTapReplaceButton() : 0;
+                if (tapMoved && rep != 0) {
+                    if (dragBtnPressed == 0) {
+                        dragBtnPressed = rep;
+                        try { buttonInput(dragBtnPressed, 1, gameX(tapDownX), gameY(tapDownY)); } catch (UnsatisfiedLinkError ig) {}
+                    }
+                    lastPanX = e.getX(); lastPanY = e.getY();
+                    try { touchInput(2, gameX(lastPanX), gameY(lastPanY)); } catch (UnsatisfiedLinkError ig) {}
+                } else if (tapMoved && dragPanEnabled) {
                     // Only pan if the finger actually MOVED since last frame (gate out jitter); a
                     // displaced-but-still finger must NOT keep the camera accelerating.
                     boolean sliding = Math.abs(e.getX() - lastPanX) + Math.abs(e.getY() - lastPanY) > 2 * d;
@@ -631,7 +640,7 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
                         && System.currentTimeMillis() - tapDownT < 250) {
                     final int gx = gameX(tapDownX), gy = gameY(tapDownY);
                     try {
-                        buttonInput(controls != null ? controls.getTapMouseButton() : 1, 1, gx, gy);   // direct tap = left click at finger
+                        buttonInput(controls != null ? controls.getTapMouseButton() : 1, 1, gx, gy);   // direct tap = left click (or tap-replace) at finger
                         ui.postDelayed(() -> buttonInput(controls != null ? controls.getTapMouseButton() : 1, 0, gx, gy), 50);
                     } catch (UnsatisfiedLinkError ig) {}
                 }
@@ -706,6 +715,10 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
     }
 
     private void releasePan() {
+        if (dragBtnPressed != 0) {
+            try { buttonInput(dragBtnPressed, 0, gameX(lastPanX), gameY(lastPanY)); } catch (UnsatisfiedLinkError ig) {}
+            dragBtnPressed = 0;
+        }
         ui.removeCallbacks(panIdleRelease);
         for (int i = 0; i < 4; i++) setPan(i, false);
     }

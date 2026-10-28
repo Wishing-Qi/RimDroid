@@ -264,7 +264,7 @@ public class InputControlsView extends View {
         invalidate();
     }
 
-    public int getTapMouseButton() {
+    public int getActiveTapReplaceButton() {
         for (ControlElement el : elements) {
             if (el instanceof ButtonElement) {
                 ButtonElement b = (ButtonElement) el;
@@ -273,7 +273,12 @@ public class InputControlsView extends View {
                 }
             }
         }
-        return 1;
+        return 0;
+    }
+
+    public int getTapMouseButton() {
+        int code = getActiveTapReplaceButton();
+        return code != 0 ? code : 1;
     }
 
     /** Quick press+release of a binding at the cursor (used by mouse-stick tap). */

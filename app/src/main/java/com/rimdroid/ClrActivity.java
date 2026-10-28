@@ -412,7 +412,7 @@ public class ClrActivity extends Activity {
 
     /**
      * One finger is the mouse. A tap is a left click (or the latched tap-replace mouse button); a finger held still is a right click (orders
-     * menu). A finger that moves pans the map with the middle button held, as RimWorld does with a
+     * menu). A finger that moves holds the latched tap-replace button if active, or pans the map with the middle button held, as RimWorld does with a
      * mouse, so the map follows the finger one to one (Settings → "Drag the map to pan", on by
      * default; 1.7 had no finger panning at all, 2026-10-22); with that setting off it drags with
      * the left button held (box selection, sliders).
@@ -431,7 +431,7 @@ public class ClrActivity extends Activity {
         private static final float STEP = 1.12f;   // pinch scale change per wheel step
         private boolean pending, pressed, gesture, rightClicked, twoPanning;
         private float twoDownX, twoDownY, lastFocusX, lastFocusY;
-        private int dragButton;   // the button a moving finger holds: 2 middle (pan) or 0 left
+        private int dragButton;   // the button a moving finger holds: 2 middle (pan), 0 left, or 1 right (tap-replace)
         private float downX, downY, scaleAcc = 1f;
         private final Runnable longPress = () -> {
             if (!pending || gesture) return;
@@ -507,7 +507,8 @@ public class ClrActivity extends Activity {
                     if (rightClicked) break;
                     if (pending && Math.hypot(x - downX, y - downY) > 12 * getResources().getDisplayMetrics().density) {
                         ui.removeCallbacks(longPress);
-                        press(dragPan ? 2 : 0);
+                        int rep = input != null ? input.controls.getActiveTapReplaceButton() : 0;
+                        press(rep != 0 ? (rep == 3 ? 1 : (rep == 2 ? 2 : 0)) : (dragPan ? 2 : 0));
                     }
                     if (pressed) pointerTo(x, y);
                     break;
