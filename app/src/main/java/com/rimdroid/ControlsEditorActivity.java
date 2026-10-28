@@ -206,7 +206,9 @@ public class ControlsEditorActivity extends Activity implements InputControlsVie
         if (el instanceof ButtonElement) {
             ButtonElement b = (ButtonElement) el;
             addBindingSpinner("Action", b.getBinding(), binding -> {
+                if (binding == b.getBinding()) return;
                 b.setBinding(binding);
+                if (binding.kind != Binding.Kind.MOUSE) b.setTapReplace(false);
                 com.rimdroid.input.IconPacks.followPack(this, controls, b);   // the pack's icon for the new action
                 buildPanel(b);
             });
