@@ -266,11 +266,13 @@ internal static class StartupHook
     static Func<object> getCurrentMap;
     static Func<object> getDesignatorManager;
     static MethodInfo selectedDesignatorGetter;
+    static MethodInfo drawStyleGetter;
     static MethodInfo draggableDimsGetter;
     static Type designatorPlaceType;
     static object cachedDm;
     static Func<object> getSelectedDesignator;
     static object cachedDes;
+    static Func<object> getDrawStyle;
     static Func<int> getDraggableDims;
 
     static void TryBindPlacing(Assembly a)
@@ -288,16 +290,20 @@ internal static class StartupHook
             MethodInfo mapGet = find.GetProperty("CurrentMap", BindingFlags.Public | BindingFlags.Static)?.GetGetMethod();
             MethodInfo dmGet = find.GetProperty("DesignatorManager", BindingFlags.Public | BindingFlags.Static)?.GetGetMethod();
             MethodInfo selGet = dm.GetProperty("SelectedDesignator", BindingFlags.Public | BindingFlags.Instance)?.GetGetMethod();
+            // RimWorld 1.5+ uses DrawStyleCategory (non-null for walls, conduits, floors, zones);
+            // older builds used DraggableDimensions > 0. Check both.
+            MethodInfo styleGet = desType.GetProperty("DrawStyleCategory", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)?.GetGetMethod(true);
             MethodInfo dragGet = desType.GetProperty("DraggableDimensions", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)?.GetGetMethod(true)
                 ?? desType.GetMethod("DraggableDimensions", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance, null, Type.EmptyTypes, null);
             if (mapGet == null || dmGet == null || selGet == null) return;
             getCurrentMap = (Func<object>)Delegate.CreateDelegate(typeof(Func<object>), mapGet);
             getDesignatorManager = (Func<object>)Delegate.CreateDelegate(typeof(Func<object>), dmGet);
             selectedDesignatorGetter = selGet;
+            drawStyleGetter = styleGet;
             draggableDimsGetter = dragGet;
             designatorPlaceType = place;
             placingBound = true;
-            Log(4, "designator placement query bound (" + name + ")");
+            Log(4, "designator placement query bound (" + name + ", drawStyle=" + (styleGet != null) + ")");
         }
         catch (Exception e)
         {
@@ -320,15 +326,18 @@ internal static class StartupHook
             }
             object des = getSelectedDesignator();
             if (des == null) return 0;
-            if (draggableDimsGetter != null)
+            if (!object.ReferenceEquals(des, cachedDes))
             {
-                if (!object.ReferenceEquals(des, cachedDes))
-                {
-                    cachedDes = des;
-                    getDraggableDims = (Func<int>)Delegate.CreateDelegate(typeof(Func<int>), des, draggableDimsGetter);
-                }
-                if (getDraggableDims != null && getDraggableDims() > 0) return 2;
+                cachedDes = des;
+                getDrawStyle = drawStyleGetter != null
+                    ? (Func<object>)Delegate.CreateDelegate(typeof(Func<object>), des, drawStyleGetter)
+                    : null;
+                getDraggableDims = draggableDimsGetter != null
+                    ? (Func<int>)Delegate.CreateDelegate(typeof(Func<int>), des, draggableDimsGetter)
+                    : null;
             }
+            if (getDrawStyle != null && getDrawStyle() != null) return 2;
+            if (getDraggableDims != null && getDraggableDims() > 0) return 2;
             return designatorPlaceType.IsInstanceOfType(des) ? 1 : 0;
         }
         catch

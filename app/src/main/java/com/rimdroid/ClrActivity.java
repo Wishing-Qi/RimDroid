@@ -434,8 +434,9 @@ public class ClrActivity extends Activity {
     private final class TouchInput extends android.view.ScaleGestureDetector.SimpleOnScaleGestureListener {
         private static final long LONG_PRESS_MS = 350;   // as on the other engines
         private static final float STEP = 1.12f;   // pinch scale change per wheel step
-        private boolean pending, pressed, gesture, rightClicked, twoPanning, hovering;
+        private boolean pending, pressed, gesture, rightClicked, twoPanning, hovering, hasPreview;
         private int placeMode;   // 0 = normal, 1 = single-item hover preview, 2 = line/box drag-place
+        private float previewX, previewY;
         private float twoDownX, twoDownY, lastFocusX, lastFocusY;
         private int dragButton;   // the button a moving finger holds: 2 middle (pan), 0 left, or 1 right (tap-replace)
         private float downX, downY, scaleAcc = 1f;
@@ -460,9 +461,18 @@ public class ClrActivity extends Activity {
             int code = input != null ? input.controls.getTapMouseButton() : 1;
             final int btn = code == 3 ? 1 : (code == 2 ? 2 : 0);
             final float tx = gx(downX), ty = gy(downY);
+            final boolean restorePreview = placeMode == 1 && hasPreview;
+            final float px = previewX, py = previewY;
             pointerTo(downX, downY);
             glfwMouse(btn, 1, tx, ty);
-            ui.postDelayed(() -> glfwMouse(btn, 0, tx, ty), 50);
+            ui.postDelayed(() -> {
+                glfwMouse(btn, 0, tx, ty);
+                // If single-item placement is still active after the tap (e.g. the player tapped
+                // the Rotate gizmo at the bottom of the screen), return the game pointer to the
+                // map preview position on the next frame so the rotated ghost stays visible there.
+                if (restorePreview && placingMode() == 1)
+                    ui.postDelayed(() -> { if (placingMode() == 1) pointerTo(px, py); }, 35);
+            }, 50);
         }
 
         private void press(int button) {
@@ -480,6 +490,7 @@ public class ClrActivity extends Activity {
                     if (input != null) input.controls.setCursorVisible(false);
                     gesture = false; pressed = false; rightClicked = false; pending = true; twoPanning = false; hovering = false;
                     placeMode = placingMode();
+                    if (placeMode != 1) hasPreview = false;
                     downX = x; downY = y;                     // the clicks carry the finger's position
                     pointerTo(x, y);
                     ui.postDelayed(longPress, LONG_PRESS_MS);
@@ -522,10 +533,13 @@ public class ClrActivity extends Activity {
                             pending = false;
                             hovering = true;
                         }
-                        if (hovering) pointerTo(x, y);
+                        if (hovering) {
+                            previewX = x; previewY = y; hasPreview = true;
+                            pointerTo(x, y);
+                        }
                         break;
                     }
-                    if (pending && Math.hypot(x - downX, y - downY) > 12 * getResources().getDisplayMetrics().density) {
+                    if (pending && Math.hypot(x - downX, y - downY) > (placeMode == 2 ? 6 : 12) * getResources().getDisplayMetrics().density) {
                         ui.removeCallbacks(longPress);
                         int rep = input != null ? input.controls.getActiveTapReplaceButton() : 0;
                         press(rep != 0 ? (rep == 3 ? 1 : (rep == 2 ? 2 : 0)) : (placeMode == 2 ? 0 : (dragPan ? 2 : 0)));
