@@ -42,6 +42,8 @@ internal static class StartupHook
         redirects = ParseRedirects(ReadRedirects());
         AppDomain.CurrentDomain.AssemblyLoad += OnAssemblyLoad;
         AppDomain.CurrentDomain.AssemblyResolve += OnAssemblyResolve;
+        foreach (Assembly a in AppDomain.CurrentDomain.GetAssemblies()) TryBindPlacing(a);
+        try { rd_set_placing_query(pollPlacingRef); } catch { }
         Log(4, "ready: " + redirects.Count + " assembly redirects");
     }
 
@@ -188,6 +190,7 @@ internal static class StartupHook
         Assembly a = args.LoadedAssembly;
         if (a.IsDynamic) return;
         string name = a.GetName().Name;
+        if (!placingBound && (name == "RimWorld" || name == "Assembly-CSharp")) TryBindPlacing(a);
         if (name == "CameraPlus") { SkipCameraPlusRendering(a); return; }
         if (name != "0Harmony" && !name.StartsWith("MonoMod", StringComparison.Ordinal)) return;
         try
@@ -238,6 +241,99 @@ internal static class StartupHook
             }
             Log(6, "librdglibc.so not found in " + dirs);
             return IntPtr.Zero;
+        }
+    }
+
+    // ---- designator placement state (for ClrActivity's touch preview) ---------------------------
+    //
+    // In RimWorld, placing a single building or installing an item (Designator_Place with
+    // DraggableDimensions == 0) commits immediately on MouseDown, while previewing its ghost
+    // requires moving the cursor with no button pressed (hover). Line/box designators
+    // (DraggableDimensions > 0: walls, conduits, floors, zones) instead use DesignationDragger
+    // from MouseDown to MouseUp.
+    // PollPlacing() runs on the game thread in glfwPollEvents() and returns:
+    //   0 = no placement/drag designator active
+    //   1 = single-tile Designator_Place (DraggableDimensions == 0): slide hovers ghost, tap places
+    //   2 = draggable Designator (DraggableDimensions > 0): slide holds Left Mouse Button to drag line/box
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    delegate int PollPlacingFn();
+
+    [DllImport("glfw", EntryPoint = "rd_set_placing_query")]
+    static extern void rd_set_placing_query(PollPlacingFn cb);
+
+    static readonly PollPlacingFn pollPlacingRef = PollPlacing;
+    static bool placingBound;
+    static Func<object> getCurrentMap;
+    static Func<object> getDesignatorManager;
+    static MethodInfo selectedDesignatorGetter;
+    static MethodInfo draggableDimsGetter;
+    static Type designatorPlaceType;
+    static object cachedDm;
+    static Func<object> getSelectedDesignator;
+    static object cachedDes;
+    static Func<int> getDraggableDims;
+
+    static void TryBindPlacing(Assembly a)
+    {
+        if (placingBound || a == null || a.IsDynamic) return;
+        string name = a.GetName().Name;
+        if (name != "RimWorld" && name != "Assembly-CSharp") return;
+        try
+        {
+            Type find = a.GetType("Verse.Find", false);
+            Type dm = a.GetType("Verse.DesignatorManager", false);
+            Type desType = a.GetType("Verse.Designator", false);
+            Type place = a.GetType("RimWorld.Designator_Place", false);
+            if (find == null || dm == null || desType == null || place == null) return;
+            MethodInfo mapGet = find.GetProperty("CurrentMap", BindingFlags.Public | BindingFlags.Static)?.GetGetMethod();
+            MethodInfo dmGet = find.GetProperty("DesignatorManager", BindingFlags.Public | BindingFlags.Static)?.GetGetMethod();
+            MethodInfo selGet = dm.GetProperty("SelectedDesignator", BindingFlags.Public | BindingFlags.Instance)?.GetGetMethod();
+            MethodInfo dragGet = desType.GetProperty("DraggableDimensions", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)?.GetGetMethod(true)
+                ?? desType.GetMethod("DraggableDimensions", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance, null, Type.EmptyTypes, null);
+            if (mapGet == null || dmGet == null || selGet == null) return;
+            getCurrentMap = (Func<object>)Delegate.CreateDelegate(typeof(Func<object>), mapGet);
+            getDesignatorManager = (Func<object>)Delegate.CreateDelegate(typeof(Func<object>), dmGet);
+            selectedDesignatorGetter = selGet;
+            draggableDimsGetter = dragGet;
+            designatorPlaceType = place;
+            placingBound = true;
+            Log(4, "designator placement query bound (" + name + ")");
+        }
+        catch (Exception e)
+        {
+            Log(5, "cannot bind designator placement query: " + e.Message);
+        }
+    }
+
+    static int PollPlacing()
+    {
+        if (!placingBound) return 0;
+        try
+        {
+            if (getCurrentMap() == null) return 0;
+            object dm = getDesignatorManager();
+            if (dm == null) return 0;
+            if (!object.ReferenceEquals(dm, cachedDm))
+            {
+                cachedDm = dm;
+                getSelectedDesignator = (Func<object>)Delegate.CreateDelegate(typeof(Func<object>), dm, selectedDesignatorGetter);
+            }
+            object des = getSelectedDesignator();
+            if (des == null) return 0;
+            if (draggableDimsGetter != null)
+            {
+                if (!object.ReferenceEquals(des, cachedDes))
+                {
+                    cachedDes = des;
+                    getDraggableDims = (Func<int>)Delegate.CreateDelegate(typeof(Func<int>), des, draggableDimsGetter);
+                }
+                if (getDraggableDims != null && getDraggableDims() > 0) return 2;
+            }
+            return designatorPlaceType.IsInstanceOfType(des) ? 1 : 0;
+        }
+        catch
+        {
+            return 0;
         }
     }
 

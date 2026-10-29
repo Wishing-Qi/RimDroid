@@ -49,6 +49,8 @@ public class ClrActivity extends Activity {
     static native void glfwDisplayMode(int width, int height, int refreshHz);
     /** Frames presented so far (counted at vkQueuePresentKHR by the libvulkan.so wrapper). */
     static native long frameCount();
+    /** Placement mode in RimWorld 1.7 (RimDroidClrHooks): 0 = none, 1 = single-tile hover preview, 2 = line/box drag. */
+    static native int placingMode();
 
     // In-game overlay, the same global setting as 1.5/1.6 (Settings → Frame rate).
     private ClrInput input;   // on-screen controls, soft and physical keyboard
@@ -415,7 +417,10 @@ public class ClrActivity extends Activity {
      * menu). A finger that moves holds the latched tap-replace button if active, or pans the map with the middle button held, as RimWorld does with a
      * mouse, so the map follows the finger one to one (Settings → "Drag the map to pan", on by
      * default; 1.7 had no finger panning at all, 2026-10-22); with that setting off it drags with
-     * the left button held (box selection, sliders).
+     * the left button held (box selection, sliders). While placing a single building or item
+     * (placingMode() == 1), a moving finger hovers the placement preview ghost with no button down
+     * and a stationary tap places it; for line/box designators like walls or conduits (placingMode() == 2),
+     * a moving finger holds the left button to drag the line/box.
      * Two fingers pinch-zoom (wheel steps) and drag-pan the map (middle button held at their midpoint),
      * with the cursor between the fingers. Buttons go down only once a finger or midpoint
      * moves or lifts, so a second finger landing first makes a clean pinch with no click.
@@ -429,7 +434,8 @@ public class ClrActivity extends Activity {
     private final class TouchInput extends android.view.ScaleGestureDetector.SimpleOnScaleGestureListener {
         private static final long LONG_PRESS_MS = 350;   // as on the other engines
         private static final float STEP = 1.12f;   // pinch scale change per wheel step
-        private boolean pending, pressed, gesture, rightClicked, twoPanning;
+        private boolean pending, pressed, gesture, rightClicked, twoPanning, hovering;
+        private int placeMode;   // 0 = normal, 1 = single-item hover preview, 2 = line/box drag-place
         private float twoDownX, twoDownY, lastFocusX, lastFocusY;
         private int dragButton;   // the button a moving finger holds: 2 middle (pan), 0 left, or 1 right (tap-replace)
         private float downX, downY, scaleAcc = 1f;
@@ -472,7 +478,8 @@ public class ClrActivity extends Activity {
             switch (e.getActionMasked()) {
                 case android.view.MotionEvent.ACTION_DOWN:
                     if (input != null) input.controls.setCursorVisible(false);
-                    gesture = false; pressed = false; rightClicked = false; pending = true; twoPanning = false;
+                    gesture = false; pressed = false; rightClicked = false; pending = true; twoPanning = false; hovering = false;
+                    placeMode = placingMode();
                     downX = x; downY = y;                     // the clicks carry the finger's position
                     pointerTo(x, y);
                     ui.postDelayed(longPress, LONG_PRESS_MS);
@@ -505,10 +512,23 @@ public class ClrActivity extends Activity {
                         break;
                     }
                     if (rightClicked) break;
+                    int activeRep = input != null ? input.controls.getActiveTapReplaceButton() : 0;
+                    if (placeMode == 1 && activeRep == 0) {
+                        // A1 single-item placement preview (DraggableDimensions == 0): sliding moves the
+                        // ghost without pressing a mouse button; releasing leaves the ghost in place,
+                        // and a stationary tap confirms placement.
+                        if (pending && Math.hypot(x - downX, y - downY) > 6 * getResources().getDisplayMetrics().density) {
+                            ui.removeCallbacks(longPress);
+                            pending = false;
+                            hovering = true;
+                        }
+                        if (hovering) pointerTo(x, y);
+                        break;
+                    }
                     if (pending && Math.hypot(x - downX, y - downY) > 12 * getResources().getDisplayMetrics().density) {
                         ui.removeCallbacks(longPress);
                         int rep = input != null ? input.controls.getActiveTapReplaceButton() : 0;
-                        press(rep != 0 ? (rep == 3 ? 1 : (rep == 2 ? 2 : 0)) : (dragPan ? 2 : 0));
+                        press(rep != 0 ? (rep == 3 ? 1 : (rep == 2 ? 2 : 0)) : (placeMode == 2 ? 0 : (dragPan ? 2 : 0)));
                     }
                     if (pressed) pointerTo(x, y);
                     break;
@@ -523,7 +543,7 @@ public class ClrActivity extends Activity {
                         if (pressed) glfwMouse(dragButton, 0, gx(x), gy(y));
                     }
                     if (twoPanning) { glfwMouse(2, 0, gx(lastFocusX), gy(lastFocusY)); twoPanning = false; }
-                    pending = false; pressed = false; gesture = false; rightClicked = false;
+                    pending = false; pressed = false; gesture = false; rightClicked = false; placeMode = 0; hovering = false;
                     break;
             }
         }
