@@ -266,14 +266,18 @@ internal static class StartupHook
     static Func<object> getCurrentMap;
     static Func<object> getDesignatorManager;
     static MethodInfo selectedDesignatorGetter;
+    static MethodInfo selectedStyleGetter;
     static MethodInfo drawStyleGetter;
     static MethodInfo draggableDimsGetter;
+    static FieldInfo defNameField;
+    static FieldInfo stylesField;
+    static FieldInfo dropdownActiveField;
     static Type designatorPlaceType;
+    static Type dropdownType;
     static object cachedDm;
     static Func<object> getSelectedDesignator;
     static object cachedDes;
-    static Func<object> getDrawStyle;
-    static Func<int> getDraggableDims;
+    static int cachedMode;
 
     static void TryBindPlacing(Assembly a)
     {
@@ -285,13 +289,17 @@ internal static class StartupHook
             Type find = a.GetType("Verse.Find", false);
             Type dm = a.GetType("Verse.DesignatorManager", false);
             Type desType = a.GetType("Verse.Designator", false);
+            Type defType = a.GetType("Verse.Def", false);
+            Type catType = a.GetType("Verse.DrawStyleCategoryDef", false);
             Type place = a.GetType("RimWorld.Designator_Place", false);
+            Type dropdown = a.GetType("RimWorld.Designator_Dropdown", false);
             if (find == null || dm == null || desType == null || place == null) return;
             MethodInfo mapGet = find.GetProperty("CurrentMap", BindingFlags.Public | BindingFlags.Static)?.GetGetMethod();
             MethodInfo dmGet = find.GetProperty("DesignatorManager", BindingFlags.Public | BindingFlags.Static)?.GetGetMethod();
             MethodInfo selGet = dm.GetProperty("SelectedDesignator", BindingFlags.Public | BindingFlags.Instance)?.GetGetMethod();
-            // RimWorld 1.5+ uses DrawStyleCategory (non-null for walls, conduits, floors, zones);
-            // older builds used DraggableDimensions > 0. Check both.
+            MethodInfo selStyleGet = dm.GetProperty("SelectedStyle", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)?.GetGetMethod(true);
+            // RimWorld 1.6+ uses DrawStyleCategory ("Default" for single-cell buildings, "Walls" /
+            // "Conduits" / "Floors" / "Zones" / "Orders" for draggable ones); older builds used DraggableDimensions.
             MethodInfo styleGet = desType.GetProperty("DrawStyleCategory", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)?.GetGetMethod(true);
             MethodInfo dragGet = desType.GetProperty("DraggableDimensions", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)?.GetGetMethod(true)
                 ?? desType.GetMethod("DraggableDimensions", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance, null, Type.EmptyTypes, null);
@@ -299,8 +307,13 @@ internal static class StartupHook
             getCurrentMap = (Func<object>)Delegate.CreateDelegate(typeof(Func<object>), mapGet);
             getDesignatorManager = (Func<object>)Delegate.CreateDelegate(typeof(Func<object>), dmGet);
             selectedDesignatorGetter = selGet;
+            selectedStyleGetter = selStyleGet;
             drawStyleGetter = styleGet;
             draggableDimsGetter = dragGet;
+            defNameField = defType?.GetField("defName", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            stylesField = catType?.GetField("styles", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            dropdownType = dropdown;
+            dropdownActiveField = dropdown?.GetField("activeDesignator", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
             designatorPlaceType = place;
             placingBound = true;
             Log(4, "designator placement query bound (" + name + ", drawStyle=" + (styleGet != null) + ")");
@@ -309,6 +322,88 @@ internal static class StartupHook
         {
             Log(5, "cannot bind designator placement query: " + e.Message);
         }
+    }
+
+    static bool IsSingleCellName(string name)
+    {
+        return string.IsNullOrEmpty(name)
+            || string.Equals(name, "Default", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(name, "SingleCell", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(name, "Single", StringComparison.OrdinalIgnoreCase);
+    }
+
+    static string GetDefName(object def)
+    {
+        if (def == null) return null;
+        try
+        {
+            if (defNameField != null)
+            {
+                string n = defNameField.GetValue(def) as string;
+                if (n != null) return n;
+            }
+            return def.ToString();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    static int ClassifyDesignator(object dm, object des)
+    {
+        if (des == null) return 0;
+        try
+        {
+            if (dropdownType != null && dropdownActiveField != null && dropdownType.IsInstanceOfType(des))
+            {
+                object inner = dropdownActiveField.GetValue(des);
+                if (inner != null) des = inner;
+            }
+        }
+        catch { }
+
+        string catName = null;
+        try
+        {
+            if (drawStyleGetter != null)
+            {
+                object cat = drawStyleGetter.Invoke(des, null);
+                if (cat != null)
+                {
+                    catName = GetDefName(cat);
+                    if (!IsSingleCellName(catName))
+                    {
+                        bool onlySingle = false;
+                        if (stylesField != null && stylesField.GetValue(cat) is System.Collections.IList list)
+                        {
+                            if (list.Count == 0) onlySingle = true;
+                            else if (list.Count == 1 && IsSingleCellName(GetDefName(list[0]))) onlySingle = true;
+                        }
+                        if (!onlySingle)
+                        {
+                            if (selectedStyleGetter != null && dm != null)
+                            {
+                                object curStyle = selectedStyleGetter.Invoke(dm, null);
+                                if (curStyle != null && IsSingleCellName(GetDefName(curStyle)))
+                                    return designatorPlaceType.IsInstanceOfType(des) ? 1 : 0;
+                            }
+                            return 2;
+                        }
+                    }
+                }
+            }
+        }
+        catch { }
+
+        try
+        {
+            if (draggableDimsGetter != null && Convert.ToInt32(draggableDimsGetter.Invoke(des, null)) > 0)
+                return 2;
+        }
+        catch { }
+
+        return designatorPlaceType.IsInstanceOfType(des) ? 1 : 0;
     }
 
     static int PollPlacing()
@@ -325,20 +420,22 @@ internal static class StartupHook
                 getSelectedDesignator = (Func<object>)Delegate.CreateDelegate(typeof(Func<object>), dm, selectedDesignatorGetter);
             }
             object des = getSelectedDesignator();
-            if (des == null) return 0;
+            if (des == null) { cachedDes = null; cachedMode = 0; return 0; }
+            try
+            {
+                if (dropdownType != null && dropdownActiveField != null && dropdownType.IsInstanceOfType(des))
+                {
+                    object inner = dropdownActiveField.GetValue(des);
+                    if (inner != null) des = inner;
+                }
+            }
+            catch { }
             if (!object.ReferenceEquals(des, cachedDes))
             {
                 cachedDes = des;
-                getDrawStyle = drawStyleGetter != null
-                    ? (Func<object>)Delegate.CreateDelegate(typeof(Func<object>), des, drawStyleGetter)
-                    : null;
-                getDraggableDims = draggableDimsGetter != null
-                    ? (Func<int>)Delegate.CreateDelegate(typeof(Func<int>), des, draggableDimsGetter)
-                    : null;
+                cachedMode = ClassifyDesignator(dm, des);
             }
-            if (getDrawStyle != null && getDrawStyle() != null) return 2;
-            if (getDraggableDims != null && getDraggableDims() > 0) return 2;
-            return designatorPlaceType.IsInstanceOfType(des) ? 1 : 0;
+            return cachedMode;
         }
         catch
         {

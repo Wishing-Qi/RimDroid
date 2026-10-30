@@ -443,7 +443,7 @@ public class ClrActivity extends Activity {
         private final Runnable longPress = () -> {
             if (!pending || gesture) return;
             pending = false;
-            rightClicked = true;
+            rightClicked = true; hasPreview = false;
             glfwMouse(1, 1, gx(downX), gy(downY));
             ui.postDelayed(() -> glfwMouse(1, 0, gx(downX), gy(downY)), 50);
             input.controls.maybeHaptic();
@@ -456,12 +456,17 @@ public class ClrActivity extends Activity {
         private float gx(float x) { return surface.getWidth() > 0 && bufferW > 0 ? x * bufferW / surface.getWidth() : x; }
         private float gy(float y) { return surface.getHeight() > 0 && bufferH > 0 ? y * bufferH / surface.getHeight() : y; }
 
-        private void tapLeft() {
+        private boolean isPlacementUiTap(float x, float y) {
+            int w = surface.getWidth(), h = surface.getHeight();
+            if (w <= 0 || h <= 0) return false;
+            return y >= h * 0.74f || (x <= w * 0.35f && y >= h * 0.42f) || y <= h * 0.08f;
+        }
+
+        private void tapLeft(final boolean restorePreview) {
             pending = false;
             int code = input != null ? input.controls.getTapMouseButton() : 1;
             final int btn = code == 3 ? 1 : (code == 2 ? 2 : 0);
             final float tx = gx(downX), ty = gy(downY);
-            final boolean restorePreview = placeMode == 1 && hasPreview;
             final float px = previewX, py = previewY;
             pointerTo(downX, downY);
             glfwMouse(btn, 1, tx, ty);
@@ -492,7 +497,10 @@ public class ClrActivity extends Activity {
                     placeMode = placingMode();
                     if (placeMode != 1) hasPreview = false;
                     downX = x; downY = y;                     // the clicks carry the finger's position
-                    pointerTo(x, y);
+                    if (placeMode == 1 && hasPreview && Math.hypot(x - previewX, y - previewY) <= 28 * getResources().getDisplayMetrics().density)
+                        pointerTo(previewX, previewY);
+                    else
+                        pointerTo(x, y);
                     ui.postDelayed(longPress, LONG_PRESS_MS);
                     break;
                 case android.view.MotionEvent.ACTION_POINTER_DOWN:
@@ -553,7 +561,25 @@ public class ClrActivity extends Activity {
                 case android.view.MotionEvent.ACTION_CANCEL:
                     ui.removeCallbacks(longPress);
                     if (!gesture && !rightClicked) {
-                        if (pending) tapLeft();               // a tap
+                        if (pending) {
+                            int rep = input != null ? input.controls.getActiveTapReplaceButton() : 0;
+                            float dp = getResources().getDisplayMetrics().density;
+                            if (placeMode == 1 && rep == 0) {
+                                if (hasPreview && Math.hypot(downX - previewX, downY - previewY) <= 28 * dp) {
+                                    downX = previewX; downY = previewY;
+                                    hasPreview = false;
+                                    tapLeft(false);
+                                } else if (isPlacementUiTap(downX, downY)) {
+                                    tapLeft(hasPreview);
+                                } else {
+                                    pending = false;
+                                    previewX = downX; previewY = downY; hasPreview = true;
+                                    pointerTo(downX, downY);
+                                }
+                            } else {
+                                tapLeft(false);
+                            }
+                        }
                         if (pressed) glfwMouse(dragButton, 0, gx(x), gy(y));
                     }
                     if (twoPanning) { glfwMouse(2, 0, gx(lastFocusX), gy(lastFocusY)); twoPanning = false; }
