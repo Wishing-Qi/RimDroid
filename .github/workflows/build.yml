@@ -105,7 +105,7 @@ jobs:
       # The release key, with the lineage from the old AOSP test key, so a release installs over any
       # earlier one (Android 9+, hence rotation from SDK 28). Pull requests get no secrets: unsigned.
       - name: Sign Release APK
-        if: github.event_name != 'pull_request' && secrets.SIGNING_KEY_BASE64 != '' && secrets.SIGNING_STORE_PASSWORD != '' && secrets.SIGNING_KEY_ALIAS != '' && secrets.SIGNING_KEY_PASSWORD != ''
+        if: github.event_name != 'pull_request' && env.SIGNING_KEY_BASE64 != '' && env.SIGNING_STORE_PASSWORD != '' && env.SIGNING_KEY_ALIAS != '' && env.SIGNING_KEY_PASSWORD != ''
         env:
           SIGNING_KEY_BASE64: ${{ secrets.SIGNING_KEY_BASE64 }}
           SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
