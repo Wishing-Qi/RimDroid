@@ -20,8 +20,13 @@ rendering, touch controls, gamepad support, and mods.
   engine built for Android, nothing emulated: the fastest way to play and the lightest on memory
 - ✔️ **Native ARM64 Mono** (RimWorld 1.6 on the emulated engine) — the game's own code runs natively
   instead of through x86 emulation, noticeably faster at high game speed
+- ✔️ **Enhanced touch interactions for RimWorld 1.7**:
+  - **Two-tap building placement & slide preview** — slide to position the blueprint ghost, tap once to aim, and tap near the preview to confirm, avoiding accidental misplacement with direct finger taps.
+  - **Smart multi-cell drag-placement** — automatically detects power conduits, walls, floors, and zones so a single-finger drag naturally lays lines and rectangles.
+  - **Preview retention on rotation** — rotating blueprints via bottom gizmo buttons keeps the preview ghost visible right where you placed it.
+  - **Two-finger map panning** — pan the camera smoothly by dragging with two fingers alongside pinch-to-zoom.
 - ✔️ **Editable on-screen touch controls** — move / resize / opacity, grid snapping, add buttons bound
-  to any key or mouse action
+  to any key or mouse action, with an independent **Replace screen tap** mode for binding direct finger taps/drags to any mouse button
 - ✔️ **In-app downloads** — get the game and DLC from Steam or GOG, and Workshop mods and whole
   Workshop collections from Steam
 - ✔️ **Steam Cloud saves** — pull your PC saves onto the phone and send them back

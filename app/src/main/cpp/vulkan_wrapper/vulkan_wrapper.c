@@ -43,9 +43,22 @@ static void* real(const char* name) {
     return g_real ? dlsym(g_real, name) : NULL;
 }
 
+// libglfw.so (glfw_android.c): the Android surface, gone while the game is in the background.
+extern int rd_surface_size(int* w, int* h) __attribute__((weak));
+extern int rd_surface_stale(void) __attribute__((weak));
+
 // Android reports currentExtent already in the window's (landscape) size; only the transform says the
 // display is turned. Reporting IDENTITY keeps the engine from passing ROTATE_90 as preTransform.
 static VkResult VKAPI_CALL caps_wrap(VkPhysicalDevice pd, VkSurfaceKHR surface, VkSurfaceCapabilitiesKHR* caps) {
+    // The engine asks this about a lost surface before it replaces it: a 0x0 extent means "wait", any
+    // other "replace it now", while SURFACE_LOST here would end the game.
+    int w = 0, h = 0;
+    if (rd_surface_size && (!rd_surface_size(&w, &h) || rd_surface_stale())) {
+        memset(caps, 0, sizeof(*caps));
+        caps->currentExtent.width = w;
+        caps->currentExtent.height = h;
+        return VK_SUCCESS;
+    }
     VkResult r = g_caps(pd, surface, caps);
     if (r != VK_SUCCESS) return r;
     caps->currentTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
@@ -64,11 +77,13 @@ extern void rd_frame_tick(void) __attribute__((weak));
 static VkResult VKAPI_CALL present_wrap(VkQueue q, const VkPresentInfoKHR* info) {
     VkResult r = g_present(q, info);
     if (rd_frame_tick) rd_frame_tick();
+    if (rd_surface_stale && rd_surface_stale()) return VK_ERROR_SURFACE_LOST_KHR;
     if (info->pResults) for (uint32_t i = 0; i < info->swapchainCount; i++)
         if (info->pResults[i] == VK_SUBOPTIMAL_KHR) info->pResults[i] = VK_SUCCESS;
     return r == VK_SUBOPTIMAL_KHR ? VK_SUCCESS : r;
 }
 static VkResult VKAPI_CALL acquire_wrap(VkDevice d, VkSwapchainKHR sc, uint64_t timeout, VkSemaphore sem, VkFence f, uint32_t* idx) {
+    if (rd_surface_stale && rd_surface_stale()) return VK_ERROR_SURFACE_LOST_KHR;
     VkResult r = g_acquire(d, sc, timeout, sem, f, idx);
     return r == VK_SUBOPTIMAL_KHR ? VK_SUCCESS : r;
 }
@@ -2217,7 +2232,10 @@ static PFN_vkVoidFunction resolve_alias(const char* name, PFN_vkVoidFunction (*g
     size_t len = strlen(name);
     if (len + 4 >= sizeof alt) return NULL;
     for (int k = 0; k < 2; k++) {
-        if (len > 3 && !strcmp(name + len - 3, sufs[k])) return NULL;   /* already a suffixed name */
+        if (len > 3 && !strcmp(name + len - 3, sufs[k])) {   /* already a suffixed name */
+            PDIAG("Vulkan function %s missing in the driver", name);
+            return NULL;
+        }
         snprintf(alt, sizeof alt, "%s%s", name, sufs[k]);
         PFN_vkVoidFunction f = get(owner, alt);
         if (f) { PDIAG("Vulkan function %s missing in the driver: using %s", name, alt); return f; }
@@ -2237,6 +2255,16 @@ static void VKAPI_CALL dbg_queue_label(VkQueue q, const VkDebugUtilsLabelEXT* l)
 static void VKAPI_CALL dbg_queue_end(VkQueue q) { (void)q; }
 static VkResult VKAPI_CALL dbg_set_name(VkDevice d, const VkDebugUtilsObjectNameInfoEXT* i) { (void)d; (void)i; return VK_SUCCESS; }
 static VkResult VKAPI_CALL dbg_set_tag(VkDevice d, const VkDebugUtilsObjectTagInfoEXT* i) { (void)d; (void)i; return VK_SUCCESS; }
+// A driver can list VK_EXT_debug_utils for the instance and still return null for its functions
+// (Adreno 610, Honor, Android 14, 2024 driver): the engine then creates its message callback through a
+// null pointer at startup. Without a messenger the engine just gets no driver messages.
+static VkResult VKAPI_CALL dbg_create_messenger(VkInstance i, const VkDebugUtilsMessengerCreateInfoEXT* c, const VkAllocationCallbacks* a, VkDebugUtilsMessengerEXT* out) {
+    (void)i; (void)c; (void)a;
+    *out = (VkDebugUtilsMessengerEXT)(uintptr_t)1;
+    return VK_SUCCESS;
+}
+static void VKAPI_CALL dbg_destroy_messenger(VkInstance i, VkDebugUtilsMessengerEXT m, const VkAllocationCallbacks* a) { (void)i; (void)m; (void)a; }
+static void VKAPI_CALL dbg_submit_message(VkInstance i, VkDebugUtilsMessageSeverityFlagBitsEXT s, VkDebugUtilsMessageTypeFlagsEXT t, const VkDebugUtilsMessengerCallbackDataEXT* d) { (void)i; (void)s; (void)t; (void)d; }
 static PFN_vkVoidFunction debug_utils_stub(const char* name) {
     PFN_vkVoidFunction f = NULL;
     if (!strcmp(name, "vkCmdBeginDebugUtilsLabelEXT") || !strcmp(name, "vkCmdInsertDebugUtilsLabelEXT")) f = (PFN_vkVoidFunction)dbg_cmd_label;
@@ -2245,6 +2273,9 @@ static PFN_vkVoidFunction debug_utils_stub(const char* name) {
     else if (!strcmp(name, "vkQueueEndDebugUtilsLabelEXT")) f = (PFN_vkVoidFunction)dbg_queue_end;
     else if (!strcmp(name, "vkSetDebugUtilsObjectNameEXT")) f = (PFN_vkVoidFunction)dbg_set_name;
     else if (!strcmp(name, "vkSetDebugUtilsObjectTagEXT")) f = (PFN_vkVoidFunction)dbg_set_tag;
+    else if (!strcmp(name, "vkCreateDebugUtilsMessengerEXT")) f = (PFN_vkVoidFunction)dbg_create_messenger;
+    else if (!strcmp(name, "vkDestroyDebugUtilsMessengerEXT")) f = (PFN_vkVoidFunction)dbg_destroy_messenger;
+    else if (!strcmp(name, "vkSubmitDebugUtilsMessageEXT")) f = (PFN_vkVoidFunction)dbg_submit_message;
     if (f) PDIAG("Vulkan function %s missing in the driver: using a no-op stand-in", name);
     return f;
 }
