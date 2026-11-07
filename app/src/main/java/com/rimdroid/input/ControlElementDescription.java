@@ -28,6 +28,7 @@ public class ControlElementDescription {
 
     public boolean isToggle;        // BUTTON: hold (false) vs toggle (true)
     public boolean isTapReplace;    // BUTTON (mouse): latch as screen-tap button instead of holding
+    public int     stylusCode;      // BUTTON: 0 = none, >0 = KeyEvent keyCode, <0 = -MotionEvent button mask
     public float   sensitivity;     // MOUSE_STICK cursor speed (0.25..8.0)
 
     /** BUTTON: picture shown instead of the label — a file name in IconPacks.iconsDir(), or null. */

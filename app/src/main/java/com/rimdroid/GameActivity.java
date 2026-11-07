@@ -853,6 +853,7 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
         if (xs != null) {
             try { xs.keyboard.onKeyEvent(event); } catch (Throwable ignored) {}
         }
+        if (controls != null && controls.onStylusKey(event)) return true;
         if (mouseKb != null && mouseKb.onKey(event)) return true;   // physical keyboard
         if (gamepad != null && gamepad.onKey(event)) return true;
         return super.dispatchKeyEvent(event);
@@ -860,6 +861,7 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
 
     @Override
     public boolean onGenericMotionEvent(MotionEvent event) {
+        if (controls != null) controls.onStylusMotion(event);
         if (gamepad != null && gamepad.onMotion(event)) return true;
         if (mouseKb != null && mouseKb.onGenericMotion(event)) return true;   // mouse move/wheel/buttons
         return super.onGenericMotionEvent(event);
@@ -869,6 +871,16 @@ public class GameActivity extends Activity implements SurfaceHolder.Callback {
     // on-screen controls view) so they move the cursor instead of panning the map; finger touches fall through.
     @Override
     public boolean dispatchTouchEvent(MotionEvent event) {
+        if (mouseKb != null && mouseKb.onTouch(event)) return true;
+        int act = event.getActionMasked();
+        boolean after = act == MotionEvent.ACTION_UP || act == MotionEvent.ACTION_CANCEL;
+        if (!after && controls != null) controls.onStylusMotion(event);
+        boolean res = super.dispatchTouchEvent(event);
+        if (after && controls != null) controls.onStylusMotion(event);
+        return res;
+    }
+
+    private boolean unusedDispatchTouchEvent(MotionEvent event) {
         if (mouseKb != null && mouseKb.onTouch(event)) return true;
         return super.dispatchTouchEvent(event);
     }

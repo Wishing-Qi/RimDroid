@@ -112,12 +112,19 @@ public class ClrActivity extends Activity {
                 logStrip.setVisibility(logStrip.getVisibility() == android.view.View.VISIBLE
                         ? android.view.View.GONE : android.view.View.VISIBLE);
             if (touch.onMouse(e)) return true;
+            int act = e.getActionMasked();
+            boolean after = act == android.view.MotionEvent.ACTION_UP || act == android.view.MotionEvent.ACTION_CANCEL;
+            if (!after && input != null) input.controls.onStylusMotion(e);
             pinch.onTouchEvent(e);
             touch.onTouch(e);
+            if (after && input != null) input.controls.onStylusMotion(e);
             return true;
         });
         // A mouse that moves with no button down and its wheel come as generic (hover/scroll) events.
-        surface.setOnGenericMotionListener((v, e) -> touch.onMouse(e));
+        surface.setOnGenericMotionListener((v, e) -> {
+            if (input != null) input.controls.onStylusMotion(e);
+            return touch.onMouse(e);
+        });
         text = new TextView(this);
         text.setTypeface(Typeface.MONOSPACE);
         text.setTextSize(9);
@@ -239,6 +246,7 @@ public class ClrActivity extends Activity {
         if (gamepad != null && e.isFromSource(android.view.InputDevice.SOURCE_GAMEPAD)
                 && (android.view.KeyEvent.isGamepadButton(e.getKeyCode()) || isDpad(e.getKeyCode()))
                 && gamepad.onKey(e)) return true;
+        if (input != null && input.controls.onStylusKey(e)) return true;
         if (ClrInput.onKeyEvent(e)) return true;
         if (gamepad != null && gamepad.onKey(e)) return true;
         return super.dispatchKeyEvent(e);
@@ -252,6 +260,7 @@ public class ClrActivity extends Activity {
 
     // A controller's sticks and triggers (a mouse is the surface's own, TouchInput.onMouse).
     @Override public boolean onGenericMotionEvent(android.view.MotionEvent e) {
+        if (input != null) input.controls.onStylusMotion(e);
         if (gamepad != null && gamepad.onMotion(e)) return true;
         return super.onGenericMotionEvent(e);
     }
@@ -535,7 +544,7 @@ public class ClrActivity extends Activity {
                     } else {
                         pointerTo(x, y);
                     }
-                    ui.postDelayed(longPress, LONG_PRESS_MS);
+                    if (repDown == 0) ui.postDelayed(longPress, LONG_PRESS_MS);
                     break;
                 case android.view.MotionEvent.ACTION_POINTER_DOWN:
                     ui.removeCallbacks(longPress);

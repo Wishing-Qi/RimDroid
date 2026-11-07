@@ -340,6 +340,9 @@ public class NativeGameOverlay extends FrameLayout
     @Override
     public boolean onTouchEvent(MotionEvent e) {
         if (isMouse(e)) return mouseTouch(e);
+        int act = e.getActionMasked();
+        boolean after = act == MotionEvent.ACTION_UP || act == MotionEvent.ACTION_CANCEL;
+        if (!after && controls != null) controls.onStylusMotion(e);
         if (scaleDetector == null) scaleDetector = new ScaleGestureDetector(getContext(), new ScaleListener());
         scaleDetector.onTouchEvent(e);
         if (e.getPointerCount() >= 2 || scaling) {   // pinch + two-finger pan: never a tap, a long press or a single-finger pan
@@ -416,6 +419,7 @@ public class NativeGameOverlay extends FrameLayout
                 if (panGestureOwned && !tapMoved && !scaling && !longPressFired
                         && System.currentTimeMillis() - tapDownT < 250)
                     click(controls.getTapMouseButton(), gameX(tapDownX), gameY(tapDownY));
+                if (controls != null) controls.onStylusMotion(e);
                 panGestureOwned = false;
                 return true;
             case MotionEvent.ACTION_CANCEL:
@@ -454,10 +458,12 @@ public class NativeGameOverlay extends FrameLayout
     // ------------------------------------------------------------------ physical gamepad
 
     @Override public boolean onKey(View v, int keyCode, KeyEvent event) {
+        if (controls != null && controls.onStylusKey(event)) return true;
         return gamepad != null && gamepad.onKey(event);
     }
 
     @Override public boolean onGenericMotion(View v, MotionEvent event) {
+        if (controls != null) controls.onStylusMotion(event);
         if (gamepad != null && gamepad.onMotion(event)) return true;
         return (isMouse(event) && mouseMotion(event)) || (event.getSource() & InputDevice.SOURCE_STYLUS) == InputDevice.SOURCE_STYLUS;
     }

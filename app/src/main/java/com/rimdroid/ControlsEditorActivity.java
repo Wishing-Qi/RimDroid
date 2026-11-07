@@ -224,6 +224,7 @@ public class ControlsEditorActivity extends Activity implements InputControlsVie
                     if (r && b.isToggle()) { b.setToggle(false); buildPanel(b); }
                 });
             }
+            addStylusRow(b);
             addIconRow(b);
         } else if (el instanceof MouseStickElement) {
             MouseStickElement m = (MouseStickElement) el;
@@ -408,6 +409,83 @@ public class ControlsEditorActivity extends Activity implements InputControlsVie
     }
 
     // ===== icon packs (IconPacks; ported from ValDroid) =====
+
+    private void addStylusRow(ButtonElement b) {
+        TextView lbl = new TextView(this);
+        lbl.setTextColor(0xFFDDE3EA);
+        lbl.setText("Stylus button: " + ButtonElement.stylusCodeLabel(b.getStylusCode()));
+        panelContainer.addView(lbl, rowParams());
+
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        Button record = new Button(this);
+        record.setText("Record");
+        record.setOnClickListener(v -> showRecordStylusDialog(b));
+        Button clear = new Button(this);
+        clear.setText("Clear");
+        clear.setEnabled(b.getStylusCode() != 0);
+        clear.setOnClickListener(v -> { b.setStylusCode(0); controls.invalidate(); buildPanel(b); });
+        LinearLayout.LayoutParams half = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        row.addView(record, half);
+        row.addView(clear, half);
+        LinearLayout.LayoutParams lp = rowParams();
+        lp.bottomMargin = (int) (10 * density);
+        panelContainer.addView(row, lp);
+    }
+
+    private void showRecordStylusDialog(ButtonElement b) {
+        TextView prompt = new TextView(this);
+        int pad = (int) (20 * density);
+        prompt.setPadding(pad, pad, pad, pad);
+        prompt.setTextColor(0xFFDDE3EA);
+        prompt.setTextSize(15);
+        prompt.setGravity(Gravity.CENTER);
+        prompt.setText("Press the stylus button now.\n(Hover or touch inside this box with the pen while pressing its button.)");
+
+        final androidx.appcompat.app.AlertDialog dialog = new com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+                .setTitle("Record stylus button")
+                .setView(prompt)
+                .setNegativeButton(android.R.string.cancel, null)
+                .create();
+
+        final boolean[] done = { false };
+        final IntConsumer finishRecord = code -> {
+            if (done[0] || code == 0) return;
+            done[0] = true;
+            b.setStylusCode(code);
+            controls.invalidate();
+            dialog.dismiss();
+            buildPanel(b);
+        };
+
+        View.OnGenericMotionListener gm = (v, e) -> {
+            int mask = InputControlsView.extractStylusMask(e);
+            if (mask != 0) { finishRecord.accept(-mask); return true; }
+            return false;
+        };
+        View.OnTouchListener tl = (v, e) -> {
+            int mask = InputControlsView.extractStylusMask(e);
+            if (mask != 0) { finishRecord.accept(-mask); return true; }
+            return false;
+        };
+        prompt.setOnGenericMotionListener(gm);
+        prompt.setOnTouchListener(tl);
+
+        dialog.setOnKeyListener((d, keyCode, event) -> {
+            if (keyCode == android.view.KeyEvent.KEYCODE_BACK
+                    || keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP
+                    || keyCode == android.view.KeyEvent.KEYCODE_VOLUME_DOWN) return false;
+            if (event.getAction() == android.view.KeyEvent.ACTION_DOWN && keyCode > 0) {
+                finishRecord.accept(keyCode);
+                return true;
+            }
+            return false;
+        });
+        dialog.show();
+        if (dialog.getWindow() != null && dialog.getWindow().getDecorView() != null) {
+            dialog.getWindow().getDecorView().setOnGenericMotionListener(gm);
+        }
+    }
 
     /** Button panel row: what the button shows, plus Choose / Remove. */
     private void addIconRow(ButtonElement b) {

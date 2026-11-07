@@ -282,7 +282,7 @@ public class InputControlsView extends View {
         for (ControlElement el : elements) {
             if (el instanceof ButtonElement) {
                 ButtonElement b = (ButtonElement) el;
-                if (b.isTapReplace() && b.isToggledOn() && b.getBinding().kind == Binding.Kind.MOUSE) {
+                if (b.isMouseReplaceActive()) {
                     return b.getBinding().code;
                 }
             }
@@ -293,6 +293,65 @@ public class InputControlsView extends View {
     public int getTapMouseButton() {
         int code = getActiveTapReplaceButton();
         return code != 0 ? code : 1;
+    }
+
+    public static int extractStylusMask(MotionEvent e) {
+        if (e == null) return 0;
+        int tool = e.getPointerCount() > 0 ? e.getToolType(0) : MotionEvent.TOOL_TYPE_UNKNOWN;
+        boolean isStylus = (tool == MotionEvent.TOOL_TYPE_STYLUS || tool == MotionEvent.TOOL_TYPE_ERASER
+                || (e.getSource() & android.view.InputDevice.SOURCE_STYLUS) == android.view.InputDevice.SOURCE_STYLUS);
+        int mask = e.getButtonState() & (MotionEvent.BUTTON_STYLUS_PRIMARY | MotionEvent.BUTTON_STYLUS_SECONDARY
+                | (isStylus ? (MotionEvent.BUTTON_SECONDARY | MotionEvent.BUTTON_TERTIARY) : 0));
+        if (e.getActionMasked() == MotionEvent.ACTION_BUTTON_PRESS) {
+            int ab = e.getActionButton();
+            if (ab == MotionEvent.BUTTON_STYLUS_PRIMARY || ab == MotionEvent.BUTTON_STYLUS_SECONDARY
+                    || (isStylus && (ab == MotionEvent.BUTTON_SECONDARY || ab == MotionEvent.BUTTON_TERTIARY)))
+                mask |= ab;
+        }
+        if (tool == MotionEvent.TOOL_TYPE_ERASER) mask |= ButtonElement.STYLUS_ERASER_MASK;
+        return mask;
+    }
+
+    public void onStylusMotion(MotionEvent e) {
+        if (editMode || e == null) return;
+        int tool = e.getPointerCount() > 0 ? e.getToolType(0) : MotionEvent.TOOL_TYPE_UNKNOWN;
+        boolean isStylus = (tool == MotionEvent.TOOL_TYPE_STYLUS || tool == MotionEvent.TOOL_TYPE_ERASER
+                || (e.getSource() & android.view.InputDevice.SOURCE_STYLUS) == android.view.InputDevice.SOURCE_STYLUS);
+        if (!isStylus && (e.getButtonState() & (MotionEvent.BUTTON_STYLUS_PRIMARY | MotionEvent.BUTTON_STYLUS_SECONDARY)) == 0)
+            return;
+        int act = e.getActionMasked();
+        int mask = (act == MotionEvent.ACTION_HOVER_EXIT || act == MotionEvent.ACTION_CANCEL) ? 0 : extractStylusMask(e);
+        if (act == MotionEvent.ACTION_BUTTON_RELEASE) mask &= ~e.getActionButton();
+        for (ControlElement el : elements) {
+            if (el instanceof ButtonElement) {
+                ButtonElement b = (ButtonElement) el;
+                int sc = b.getStylusCode();
+                if (sc < 0) {
+                    int bit = -sc;
+                    b.onStylusButton((mask & bit) != 0);
+                }
+            }
+        }
+    }
+
+    public boolean onStylusKey(android.view.KeyEvent e) {
+        if (editMode || e == null) return false;
+        int code = e.getKeyCode();
+        if (code <= 0) return false;
+        int act = e.getAction();
+        if (act != android.view.KeyEvent.ACTION_DOWN && act != android.view.KeyEvent.ACTION_UP) return false;
+        boolean handled = false;
+        for (ControlElement el : elements) {
+            if (el instanceof ButtonElement) {
+                ButtonElement b = (ButtonElement) el;
+                if (b.getStylusCode() == code) {
+                    if (act == android.view.KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) b.onStylusButton(true);
+                    else if (act == android.view.KeyEvent.ACTION_UP) b.onStylusButton(false);
+                    handled = true;
+                }
+            }
+        }
+        return handled;
     }
 
     /** Quick press+release of a binding at the cursor (used by mouse-stick tap). */

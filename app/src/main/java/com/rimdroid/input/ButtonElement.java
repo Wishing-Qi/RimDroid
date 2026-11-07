@@ -23,6 +23,9 @@ public class ButtonElement extends ControlElement {
     private String text;
     private boolean isToggle;
     private boolean isTapReplace;
+    private int stylusCode;
+    private boolean stylusHeld = false;
+    public static final int STYLUS_ERASER_MASK = 1 << 29;
     private Binding binding;
     // Picture shown instead of the label (IconPacks); the label is the fallback when the file is gone.
     private String icon;
@@ -47,6 +50,7 @@ public class ButtonElement extends ControlElement {
         this.text = d.text != null ? d.text : "";
         this.isToggle = d.isToggle;
         this.isTapReplace = d.isTapReplace;
+        this.stylusCode = d.stylusCode;
         this.binding = (d.bindings != null && d.bindings.length > 0)
                 ? Binding.fromName(d.bindings[0], Binding.MOUSE_LEFT) : Binding.MOUSE_LEFT;
         this.icon = d.icon;
@@ -123,6 +127,11 @@ public class ButtonElement extends ControlElement {
         if (pointerId >= 0 && !isToggle && !(isTapReplace && binding.kind == Binding.Kind.MOUSE)) view.inject(binding, false);
         if (isToggle && toggledOn) { view.inject(binding, false); toggledOn = false; }
         if (isTapReplace && toggledOn) { toggledOn = false; }
+        if (stylusHeld) {
+            if (!isToggle && !(isTapReplace && binding.kind == Binding.Kind.MOUSE) && binding.kind != Binding.Kind.MOUSE)
+                view.inject(binding, false);
+            stylusHeld = false;
+        }
         pointerId = -1;
     }
 
@@ -134,7 +143,7 @@ public class ButtonElement extends ControlElement {
 
     @Override public void draw(Canvas c) {
         float cx = centerX(), cy = centerY(), hw = halfW(), hh = halfH();
-        boolean active = (pointerId >= 0) || ((isToggle || isTapReplace) && toggledOn);
+        boolean active = (pointerId >= 0) || stylusHeld || ((isToggle || isTapReplace) && toggledOn);
         int baseA = alpha;
         fill.setColor(0x00FFFFFF | ((active ? Math.min(255, baseA + 60) : (int)(baseA * 0.35f)) << 24));
         stroke.setColor(0x00FFFFFF | (Math.min(255, baseA + 40) << 24));
@@ -182,6 +191,7 @@ public class ButtonElement extends ControlElement {
         d.text = text;
         d.isToggle = isToggle;
         d.isTapReplace = isTapReplace;
+        d.stylusCode = stylusCode;
         d.bindings = new String[]{ binding.name() };
         d.icon = icon;
         d.iconNoTint = iconNoTint;
@@ -199,6 +209,50 @@ public class ButtonElement extends ControlElement {
     public void setToggle(boolean t) { reset(); this.isToggle = t; }
     public boolean isTapReplace() { return isTapReplace; }
     public void setTapReplace(boolean r) { reset(); this.isTapReplace = r; }
+    public int getStylusCode() { return stylusCode; }
+    public void setStylusCode(int code) { reset(); this.stylusCode = code; }
+
+    public boolean isMouseReplaceActive() {
+        if (binding.kind != Binding.Kind.MOUSE) return false;
+        if (stylusCode != 0 && (stylusHeld || ((isToggle || isTapReplace) && toggledOn))) return true;
+        return isTapReplace && toggledOn;
+    }
+
+    public void onStylusButton(boolean down) {
+        if (down == stylusHeld) return;
+        stylusHeld = down;
+        if (down) {
+            view.maybeHaptic();
+            if (isTapReplace && binding.kind == Binding.Kind.MOUSE) {
+                view.toggleTapMouseButton(this);
+            } else if (isToggle) {
+                toggledOn = !toggledOn;
+                if (binding.kind != Binding.Kind.MOUSE) view.inject(binding, toggledOn);
+            } else {
+                if (binding.kind != Binding.Kind.MOUSE) view.inject(binding, true);
+            }
+        } else {
+            if (!isToggle && !(isTapReplace && binding.kind == Binding.Kind.MOUSE)) {
+                if (binding.kind != Binding.Kind.MOUSE) view.inject(binding, false);
+            }
+        }
+        view.invalidate();
+    }
+
+    public static String stylusCodeLabel(int code) {
+        if (code == 0) return "None";
+        if (code < 0) {
+            int mask = -code;
+            if (mask == MotionEvent.BUTTON_STYLUS_PRIMARY) return "Stylus Primary";
+            if (mask == MotionEvent.BUTTON_STYLUS_SECONDARY) return "Stylus Secondary";
+            if (mask == STYLUS_ERASER_MASK) return "Stylus Eraser";
+            if (mask == MotionEvent.BUTTON_SECONDARY) return "Stylus Right";
+            if (mask == MotionEvent.BUTTON_TERTIARY) return "Stylus Middle";
+            return "Stylus Mask 0x" + Integer.toHexString(mask);
+        }
+        String s = android.view.KeyEvent.keyCodeToString(code);
+        return s.startsWith("KEYCODE_") ? s.substring(8) : s;
+    }
     public String getText() { return text; }
     public void setText(String t) { this.text = t != null ? t : ""; }
     public Shape getShape() { return shape; }
