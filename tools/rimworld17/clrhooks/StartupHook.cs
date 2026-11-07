@@ -279,6 +279,11 @@ internal static class StartupHook
     static Func<object> getSelectedDesignator;
     static object cachedDes;
     static int cachedMode;
+    static Func<float> getCurUICellSize;
+    static FieldInfo lastUIScaleField;
+    static MethodInfo mouseCellMethod;
+    static FieldInfo intVecXField;
+    static FieldInfo intVecZField;
 
     static void TryBindPlacing(Assembly a)
     {
@@ -316,6 +321,19 @@ internal static class StartupHook
             dropdownType = dropdown;
             dropdownActiveField = dropdown?.GetField("activeDesignator", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
             designatorPlaceType = place;
+            try
+            {
+                Type uiType = a.GetType("Verse.UI", false);
+                Type iv3Type = a.GetType("Verse.IntVec3", false);
+                MethodInfo cellSz = uiType?.GetMethod("CurUICellSize", BindingFlags.Public | BindingFlags.Static, null, Type.EmptyTypes, null);
+                if (cellSz != null && cellSz.ReturnType == typeof(float))
+                    getCurUICellSize = (Func<float>)Delegate.CreateDelegate(typeof(Func<float>), cellSz);
+                lastUIScaleField = uiType?.GetField("lastUIScale", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
+                mouseCellMethod = uiType?.GetMethod("MouseCell", BindingFlags.Public | BindingFlags.Static, null, Type.EmptyTypes, null);
+                intVecXField = iv3Type?.GetField("x", BindingFlags.Public | BindingFlags.Instance);
+                intVecZField = iv3Type?.GetField("z", BindingFlags.Public | BindingFlags.Instance);
+            }
+            catch { }
             placingBound = true;
             Log(4, "designator placement query bound (" + name + ", drawStyle=" + (styleGet != null) + ")");
         }
@@ -435,6 +453,31 @@ internal static class StartupHook
             {
                 cachedDes = des;
                 cachedMode = ClassifyDesignator(dm, des);
+            }
+            if (cachedMode == 1)
+            {
+                int cellPx = 32, cx = 0, cz = 0;
+                try
+                {
+                    if (getCurUICellSize != null)
+                    {
+                        float uiCell = getCurUICellSize();
+                        float scale = lastUIScaleField != null ? Convert.ToSingle(lastUIScaleField.GetValue(null)) : 1f;
+                        int px = (int)Math.Round(uiCell * (scale > 0f ? scale : 1f));
+                        cellPx = px < 4 ? 4 : (px > 255 ? 255 : px);
+                    }
+                    if (mouseCellMethod != null && intVecXField != null && intVecZField != null)
+                    {
+                        object cell = mouseCellMethod.Invoke(null, null);
+                        if (cell != null)
+                        {
+                            cx = Convert.ToInt32(intVecXField.GetValue(cell)) & 0x7FF;
+                            cz = Convert.ToInt32(intVecZField.GetValue(cell)) & 0x7FF;
+                        }
+                    }
+                }
+                catch { }
+                return 1 | (cellPx << 2) | (cx << 10) | (cz << 21);
             }
             return cachedMode;
         }

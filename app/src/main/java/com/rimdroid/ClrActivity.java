@@ -451,7 +451,7 @@ public class ClrActivity extends Activity {
         private static final long LONG_PRESS_MS = 350;   // as on the other engines
         private static final float STEP = 1.12f;   // pinch scale change per wheel step
         private boolean pending, pressed, gesture, rightClicked, twoPanning, hovering, hasPreview;
-        private int placeMode;   // 0 = normal, 1 = single-item hover preview, 2 = line/box drag-place
+        private int placeMode, previewCell = -1;   // 0 = normal, 1 = single-item hover preview, 2 = line/box drag-place
         private float previewX, previewY;
         private float twoDownX, twoDownY, lastFocusX, lastFocusY;
         private int dragButton;   // the button a moving finger holds: 2 middle (pan), 0 left, or 1 right (tap-replace)
@@ -459,7 +459,7 @@ public class ClrActivity extends Activity {
         private final Runnable longPress = () -> {
             if (!pending || gesture) return;
             pending = false;
-            rightClicked = true; hasPreview = false;
+            rightClicked = true; hasPreview = false; previewCell = -1;
             glfwMouse(1, 1, gx(downX), gy(downY));
             ui.postDelayed(() -> glfwMouse(1, 0, gx(downX), gy(downY)), 50);
             input.controls.maybeHaptic();
@@ -475,7 +475,22 @@ public class ClrActivity extends Activity {
         private boolean isPlacementUiTap(float x, float y) {
             int w = surface.getWidth(), h = surface.getHeight();
             if (w <= 0 || h <= 0) return false;
-            return y >= h * 0.74f || (x <= w * 0.35f && y >= h * 0.42f) || y <= h * 0.08f;
+            return y >= h * 0.72f || x <= w * 0.32f || y <= h * 0.08f;
+        }
+
+        private float cellViewPx(int raw) {
+            int gameCellPx = (raw >>> 2) & 0xFF;
+            if (gameCellPx <= 0) return 16 * getResources().getDisplayMetrics().density;
+            return surface.getWidth() > 0 && bufferW > 0 ? gameCellPx * (float) surface.getWidth() / bufferW : gameCellPx;
+        }
+
+        private void latchPreviewCell() {
+            int raw = placingMode();
+            if ((raw & 3) == 1) previewCell = raw >>> 10;
+            ui.postDelayed(() -> {
+                int r = placingMode();
+                if (hasPreview && (r & 3) == 1) previewCell = r >>> 10;
+            }, 25);
         }
 
         private void tapLeft(final boolean restorePreview) {
@@ -491,8 +506,8 @@ public class ClrActivity extends Activity {
                 // If single-item placement is still active after the tap (e.g. the player tapped
                 // the Rotate gizmo at the bottom of the screen), return the game pointer to the
                 // map preview position on the next frame so the rotated ghost stays visible there.
-                if (restorePreview && placingMode() == 1)
-                    ui.postDelayed(() -> { if (placingMode() == 1) pointerTo(px, py); }, 35);
+                if (restorePreview && (placingMode() & 3) == 1)
+                    ui.postDelayed(() -> { if ((placingMode() & 3) == 1) pointerTo(px, py); }, 35);
             }, 50);
         }
 
@@ -510,13 +525,16 @@ public class ClrActivity extends Activity {
                 case android.view.MotionEvent.ACTION_DOWN:
                     if (input != null) input.controls.setCursorVisible(false);
                     gesture = false; pressed = false; rightClicked = false; pending = true; twoPanning = false; hovering = false;
-                    placeMode = placingMode();
-                    if (placeMode != 1) hasPreview = false;
+                    int rawDown = placingMode();
+                    placeMode = rawDown & 3;
+                    if (placeMode != 1) { hasPreview = false; previewCell = -1; }
                     downX = x; downY = y;                     // the clicks carry the finger's position
-                    if (placeMode == 1 && hasPreview && Math.hypot(x - previewX, y - previewY) <= 28 * getResources().getDisplayMetrics().density)
-                        pointerTo(previewX, previewY);
-                    else
+                    int repDown = input != null ? input.controls.getActiveTapReplaceButton() : 0;
+                    if (placeMode == 1 && repDown == 0) {
+                        if (!isPlacementUiTap(x, y)) pointerTo(x, y);
+                    } else {
                         pointerTo(x, y);
+                    }
                     ui.postDelayed(longPress, LONG_PRESS_MS);
                     break;
                 case android.view.MotionEvent.ACTION_POINTER_DOWN:
@@ -577,20 +595,26 @@ public class ClrActivity extends Activity {
                 case android.view.MotionEvent.ACTION_CANCEL:
                     ui.removeCallbacks(longPress);
                     if (!gesture && !rightClicked) {
-                        if (pending) {
+                        if (hovering) {
+                            latchPreviewCell();
+                        } else if (pending) {
                             int rep = input != null ? input.controls.getActiveTapReplaceButton() : 0;
-                            float dp = getResources().getDisplayMetrics().density;
                             if (placeMode == 1 && rep == 0) {
-                                if (hasPreview && Math.hypot(downX - previewX, downY - previewY) <= 28 * dp) {
-                                    downX = previewX; downY = previewY;
-                                    hasPreview = false;
-                                    tapLeft(false);
-                                } else if (isPlacementUiTap(downX, downY)) {
+                                int rawUp = placingMode();
+                                int nowCell = rawUp >>> 10;
+                                float cpx = cellViewPx(rawUp);
+                                if (isPlacementUiTap(downX, downY)) {
                                     tapLeft(hasPreview);
+                                } else if (hasPreview && previewCell >= 0 && nowCell == previewCell
+                                        && Math.hypot(downX - previewX, downY - previewY) <= cpx * 0.65f) {
+                                    downX = previewX; downY = previewY;
+                                    hasPreview = false; previewCell = -1;
+                                    tapLeft(false);
                                 } else {
                                     pending = false;
                                     previewX = downX; previewY = downY; hasPreview = true;
                                     pointerTo(downX, downY);
+                                    latchPreviewCell();
                                 }
                             } else {
                                 tapLeft(false);
