@@ -12,7 +12,9 @@
 //    sits in a load context of its own and does not see other mods' assemblies; a reference is
 //    answered with an already loaded assembly of the same simple name, whatever its version.
 //  - WaylithClr.LaxPrivateFieldNames: see LaxFieldNames.cs (Harmony's field lookups).
+//  - DynamicMethods made with Mono-era attributes (Private | Static): see LaxDynamicMethods.cs.
 //  - WaylithClr.FieldInjection: see WaylithClrStubs.cs (reported as unsupported).
+//  - Steamworks.NET's "steam_api" / "steam_api64" go to our 1.7 Steam stub (RouteSteam).
 //  - MonoMod inside Harmony P/Invokes glibc's "libc" (and "libdl.so.2"); Android's libc is bionic.
 //    Those go to librdglibc.so, which translates the few calls whose ABI differs.
 using System;
@@ -193,6 +195,7 @@ internal static class StartupHook
         string name = a.GetName().Name;
         if (!placingBound && (name == "RimWorld" || name == "Assembly-CSharp")) TryBindPlacing(a);
         if (name == "CameraPlus") { SkipCameraPlusRendering(a); return; }
+        if (name == "com.rlabrecque.steamworks.net") { RouteSteam(a); return; }
         if (name != "0Harmony" && !name.StartsWith("MonoMod", StringComparison.Ordinal)) return;
         try
         {
@@ -204,7 +207,11 @@ internal static class StartupHook
             Log(5, name + ": cannot route libc: " + e.Message);
         }
         // WaylithClr.LaxPrivateFieldNames: Harmony finds framework fields by their Mono names too.
-        if (name == "0Harmony") RimDroidLaxFieldNames.Install(a, Log);
+        if (name == "0Harmony")
+        {
+            RimDroidLaxFieldNames.Install(a, Log);
+            RimDroidLaxDynamicMethods.Install(a, Log);
+        }
     }
 
     // Camera+ draws its colonist markers with shaders from its own Unity asset bundle, generated on the
@@ -225,6 +232,36 @@ internal static class StartupHook
         catch (Exception e)
         {
             Log(5, "CameraPlus: cannot skip its rendering: " + e.Message);
+        }
+    }
+
+    // Steamworks.NET P/Invokes "steam_api64" (Windows name, up to 1.7.4995) or "steam_api" (newer
+    // builds, 2026-11-11). Our 1.7 stub is libsteam_api64.so; libsteam_api.so in the app is the 1.6
+    // native engine's stub, without the newer SteamInternal_SteamAPI_Init, and the game aborted at
+    // start with EntryPointNotFoundException. Both names go to the 1.7 stub.
+    static IntPtr steam;
+
+    static void RouteSteam(Assembly a)
+    {
+        try
+        {
+            NativeLibrary.SetDllImportResolver(a, ResolveSteam);
+            Log(4, a.GetName().Name + ": steam_api -> libsteam_api64.so");
+        }
+        catch (Exception e)
+        {
+            Log(5, "cannot route steam_api: " + e.Message);
+        }
+    }
+
+    static IntPtr ResolveSteam(string library, Assembly assembly, DllImportSearchPath? searchPath)
+    {
+        if (library != "steam_api" && library != "steam_api64") return IntPtr.Zero;
+        lock (gate)
+        {
+            if (steam == IntPtr.Zero && !NativeLibrary.TryLoad("libsteam_api64.so", out steam))
+                Log(6, "libsteam_api64.so not found");
+            return steam;
         }
     }
 

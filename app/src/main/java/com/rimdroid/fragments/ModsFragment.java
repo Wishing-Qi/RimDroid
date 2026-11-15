@@ -57,7 +57,7 @@ public class ModsFragment extends Fragment {
     private final List<GameInstance> instances = new ArrayList<>();
     private final List<Object> rows = new ArrayList<>();   // String = section header, Row = a mod
     private boolean editable;
-    private View btnSort, btnEnableAll, btnDisableAll;
+    private View btnSort, btnEnableAll, btnDisableAll, btnCopy;
     /** Dragging changes only the screen; true until the new order is written on release. */
     private boolean dragged;
     private androidx.recyclerview.widget.ItemTouchHelper dragHelper;
@@ -118,12 +118,16 @@ public class ModsFragment extends Fragment {
         btnDisableAll = v.findViewById(R.id.btn_mods_disable_all);
         btnEnableAll.setOnClickListener(x -> enableAllShown());
         btnDisableAll.setOnClickListener(x -> disableAllShown());
+        btnCopy = v.findViewById(R.id.btn_mods_copy);
+        btnCopy.setOnClickListener(x -> chooseCopyTarget());
     }
 
     @Override
     public void onResume() {
         super.onResume();
         refresh();   // mods may have been installed or downloaded in the meantime
+        // A fresher copy of the players' load-order rules for the next sort, at most once a day.
+        com.rimdroid.mods.CommunityRules.refreshInBackground(requireContext().getApplicationContext());
     }
 
     @Nullable
@@ -147,6 +151,7 @@ public class ModsFragment extends Fragment {
             btnSort.setEnabled(false);
             btnEnableAll.setEnabled(false);
             btnDisableAll.setEnabled(false);
+            btnCopy.setEnabled(false);
             adapter.notifyDataSetChanged();
             return;
         }
@@ -161,6 +166,7 @@ public class ModsFragment extends Fragment {
         btnSort.setEnabled(editable);
         btnEnableAll.setEnabled(editable);
         btnDisableAll.setEnabled(editable);
+        btnCopy.setEnabled(!running);
 
         String q = etSearch.getText().toString().trim().toLowerCase(Locale.ROOT);
         Map<String, ModList.Mod> byId = ModList.byId(mods);
@@ -229,6 +235,139 @@ public class ModsFragment extends Fragment {
 
     /** Every active mod shown is switched off, except Core and the DLC (as the game keeps them);
      *  their load order is lost, so it asks first. */
+    // ---- copy the mods to another instance ----
+
+    /** Every downloaded mod of this instance into another one; optionally its load order too. */
+    private void chooseCopyTarget() {
+        GameInstance from = current();
+        if (from == null) return;
+        List<GameInstance> targets = new ArrayList<>();
+        for (GameInstance gi : instances) if (gi != from && !gi.getName().equals(from.getName())) targets.add(gi);
+        if (targets.isEmpty()) {
+            Toast.makeText(requireContext(), R.string.mods_copy_no_target, Toast.LENGTH_LONG).show();
+            return;
+        }
+        // The game version next to each name: mods usually carry folders for several versions, but
+        // a 1.6 mod list copied into 1.7 is worth a second look.
+        String[] names = new String[targets.size()];
+        for (int i = 0; i < names.length; i++) {
+            String ver = ModList.gameVersion(new File(targets.get(i).getGamePath()));
+            names[i] = targets.get(i).getName() + (ver.isEmpty() ? "" : "  (" + ver + ")");
+        }
+        final int[] picked = { 0 };
+        View box = getLayoutInflater().inflate(R.layout.dialog_mods_copy, null);
+        android.widget.ListView list = box.findViewById(R.id.lv_mods_copy_targets);
+        list.setChoiceMode(android.widget.ListView.CHOICE_MODE_SINGLE);
+        list.setAdapter(new ArrayAdapter<>(requireContext(), android.R.layout.simple_list_item_single_choice, names));
+        list.setItemChecked(0, true);
+        list.setOnItemClickListener((p, view, pos, id) -> picked[0] = pos);
+        android.widget.CheckBox withOrder = box.findViewById(R.id.cb_mods_copy_order);
+        new MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_RimDroid_ButtonDialog)
+                .setTitle(getString(R.string.mods_copy_title, from.getName()))
+                .setView(box)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(R.string.mods_copy_next, (d, w) -> chooseModsToCopy(from, targets.get(picked[0]), withOrder.isChecked()))
+                .show();
+    }
+
+    /**
+     * Ticks for each mod of the source (as in Zomdroid): all ticked, except those the target already
+     * has (copying them would change nothing, they stay as they are), which are marked as such.
+     */
+    private void chooseModsToCopy(GameInstance from, GameInstance to, boolean withOrder) {
+        List<ModList.Mod> mods = com.rimdroid.mods.ModCopier.listCopyable(new File(from.getGamePath()));
+        if (mods.isEmpty()) {
+            Toast.makeText(requireContext(), R.string.mods_copy_nothing, Toast.LENGTH_LONG).show();
+            return;
+        }
+        Set<String> there = com.rimdroid.mods.ModCopier.installedIds(new File(to.getGamePath()));
+        String[] labels = new String[mods.size()];
+        boolean[] checked = new boolean[mods.size()];
+        for (int i = 0; i < labels.length; i++) {
+            boolean has = there.contains(mods.get(i).packageId);
+            labels[i] = has ? getString(R.string.mods_copy_already_there, mods.get(i).name) : mods.get(i).name;
+            checked[i] = !has;
+        }
+        androidx.appcompat.app.AlertDialog dialog = new MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_RimDroid_ButtonDialog)
+                .setTitle(getString(R.string.mods_copy_pick_title, to.getName()))
+                .setMultiChoiceItems(labels, checked, (d, which, isChecked) -> {
+                    checked[which] = isChecked;
+                    updateSelectAllButton((androidx.appcompat.app.AlertDialog) d, checked);
+                })
+                // Set up below: the default handler would close the dialog.
+                .setNeutralButton(R.string.mods_copy_uncheck_all, null)
+                .setPositiveButton(R.string.mods_copy_go, (d, w) -> {
+                    List<String> picked = new ArrayList<>();
+                    for (int i = 0; i < checked.length; i++) if (checked[i]) picked.add(mods.get(i).packageId);
+                    // Nothing ticked is fine when only the load order is wanted.
+                    if (picked.isEmpty() && !withOrder) {
+                        Toast.makeText(requireContext(), R.string.mods_copy_none_picked, Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    copyMods(from, to, picked, withOrder);
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
+        // One button for both ways: "Uncheck all" while everything is ticked, "Check all" otherwise,
+        // so picking 3 mods out of 100 is not 97 taps.
+        updateSelectAllButton(dialog, checked);
+        dialog.getButton(android.content.DialogInterface.BUTTON_NEUTRAL).setOnClickListener(v -> {
+            boolean all = true;
+            for (boolean c : checked) all &= c;
+            for (int i = 0; i < checked.length; i++) {
+                checked[i] = !all;
+                dialog.getListView().setItemChecked(i, !all);
+            }
+            updateSelectAllButton(dialog, checked);
+        });
+    }
+
+    private void updateSelectAllButton(androidx.appcompat.app.AlertDialog dialog, boolean[] checked) {
+        android.widget.Button b = dialog.getButton(android.content.DialogInterface.BUTTON_NEUTRAL);
+        if (b == null) return;
+        boolean all = true;
+        for (boolean c : checked) all &= c;
+        b.setText(all ? R.string.mods_copy_uncheck_all : R.string.mods_copy_check_all);
+    }
+
+    private void copyMods(GameInstance from, GameInstance to, List<String> picked, boolean withOrder) {
+        if (InstanceShortcuts.isGameRunning(requireContext())) {
+            Toast.makeText(requireContext(), R.string.mods_copy_game_running, Toast.LENGTH_LONG).show();
+            return;
+        }
+        android.content.Context app = requireContext().getApplicationContext();
+        androidx.appcompat.app.AlertDialog wait = new MaterialAlertDialogBuilder(requireContext())
+                .setTitle(getString(R.string.mods_copy_running, to.getName()))
+                .setMessage("…")
+                .setCancelable(false)
+                .show();
+        android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
+        new Thread(() -> {
+            com.rimdroid.mods.ModCopier.Result r = com.rimdroid.mods.ModCopier.copy(
+                    new File(from.getGamePath()), new File(to.getGamePath()), picked, withOrder,
+                    (name, i, total) -> main.post(() -> wait.setMessage(i + " / " + total + "\n" + name)));
+            main.post(() -> {
+                wait.dismiss();
+                if (!isAdded()) {
+                    Toast.makeText(app, app.getString(R.string.mods_copy_done, r.copied.size(), r.alreadyThere.size()),
+                            Toast.LENGTH_LONG).show();
+                    return;
+                }
+                StringBuilder sb = new StringBuilder(getString(R.string.mods_copy_done, r.copied.size(), r.alreadyThere.size()));
+                if (withOrder) sb.append("\n\n").append(getString(r.orderWritten ? R.string.mods_copy_order_done : R.string.mods_copy_order_failed));
+                if (!r.failed.isEmpty()) {
+                    sb.append("\n\n").append(getString(R.string.mods_copy_failed));
+                    for (String name : r.failed) sb.append("\n• ").append(name);
+                }
+                new MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_RimDroid_ButtonDialog)
+                        .setTitle(getString(R.string.mods_copy_running, to.getName()))
+                        .setMessage(sb.toString())
+                        .setPositiveButton(android.R.string.ok, null)
+                        .show();
+            });
+        }, "rd-mods-copy").start();
+    }
+
     private void disableAllShown() {
         GameInstance gi = current();
         if (gi == null || !editable) return;
@@ -260,7 +399,8 @@ public class ModsFragment extends Fragment {
         if (order == null) return;
         List<ModList.Mod> mods = ModList.installed(dir);
         Map<String, ModList.Mod> byId = ModList.byId(mods);
-        com.rimdroid.mods.ModSorter.Result r = com.rimdroid.mods.ModSorter.sort(order, byId);
+        com.rimdroid.mods.ModSorter.Result r = com.rimdroid.mods.ModSorter.sort(order, byId,
+                com.rimdroid.mods.CommunityRules.load(requireContext()));
 
         StringBuilder sb = new StringBuilder();
         sb.append(r.moved == 0 ? getString(R.string.mods_sort_nochange) : getString(R.string.mods_sort_moved, r.moved));

@@ -110,7 +110,6 @@
     <string name="driver_auto_set_title">Драйвер выставлен</string>
     <string name="driver_auto_set">Обнаружен GPU: %1$s.\n\nДля этого инстанса выставлен рекомендуемый Vulkan-драйвер: %2$s.\n\nЕсли получите чёрный экран или артефакты — смените его в настройках инстанса (шестерёнка на карточке).</string>
     <string name="nav_import_mods">Импорт модов (ZIP)…</string>
-    <string name="nav_export_logs">Экспорт логов (ZIP)</string>
     <string name="nav_updates">Новые версии (GitHub)</string>
     <string name="nav_bug_report">Сообщить об ошибке</string>
     <string name="nav_wiki">Вики</string>
@@ -128,7 +127,6 @@
     <string name="zomdroid_dialog_message">Zomdroid запускает Project Zomboid на Android — так же, как этот лаунчер запускает RimWorld. Тот же автор, тот же подход.\n\nhttps://github.com/udarmolota/Zomdroid/releases</string>
     <string name="bug_report_subject">RIMDROID REPORT %1$s</string>
     <string name="bug_report_body">Hi, I have a new bug report.\n\nDescription: \n\n\n---\n%1$s</string>
-    <string name="bug_report_no_mail">На устройстве нет почтового приложения.</string>
     <string name="donate_title">Поддержать разработку</string>
     <string name="donate_message">Нравится RimDroid и хочешь поддержать?\n\nДелаю и поддерживаю: ko-fi.com/udarmolota\n\nЛюбая помощь помогает продолжать работу. Спасибо! ❤</string>
     <string name="on_screen_controls">Экранное управление</string>
@@ -211,6 +209,7 @@
     <string name="theme_dark">Тёмная</string>
     <string name="custom_driver_title">Свой Vulkan-драйвер</string>
     <string name="custom_driver_note">Импортируйте Vulkan/Turnip-драйвер (файл .so или AdrenoTools .zip). Затем на карточке игры → шестерёнка → Vulkan-драйвер выберите \"Custom driver (imported)\". Драйвер общий для всех инстансов на этом устройстве.</string>
+    <string name="custom_driver_engines">Работает только в RimWorld 1.5 и 1.6 с движком «box64 + нативный Mono» или «Полная эмуляция (box64)». Нативный движок (и RimWorld 1.7) всегда использует системный драйвер телефона.</string>
     <string name="custom_driver_import">Импорт драйвера (.so / .zip)</string>
     <string name="custom_driver_remove">Удалить</string>
     <string name="custom_driver_status_none">Свой драйвер не импортирован.</string>
@@ -231,6 +230,7 @@
     <string name="install_content_dlc">DLC</string>
     <string name="install_content_pick">Выбрать ZIP-файл</string>
     <string name="install_content_no_file">Файл не выбран</string>
+    <string name="install_content_files_selected">Выбрано файлов: %1$d:</string>
     <string name="install_content_go">Установить</string>
 
     <!-- Экран загрузки -->
@@ -373,7 +373,7 @@
     <string name="vk_compat_off">Выключено</string>
     <string name="vk_compat_hint">Включи, если картинка замирает на логотипе или в меню, а игра при этом продолжает работать. Картинка та же, Unity иначе собирает каждый кадр. Действует со следующего запуска.</string>
     <string name="release_notes_title">Что нового в v%1$s</string>
-    <string name="release_notes_body"><b>– RimWorld 1.7 (экспериментально)</b>\nТестовое обновление Ludeon запускается нативно, без эмуляции: намного легче 1.6. Большинство модов для 1.6 работают. Ввод текста на любом языке. Держите 1.7 в отдельном инстансе.\n\n<b>– Загрузка из Steam: 1.6 и 1.7</b>\nИгра сохраняется в zip; <b>Создать инстанс</b> открывает его. 1.5 больше не предлагается.\n\n<b>– Новости RimWorld</b>\nНа главном экране.\n\n<b>– Экран модов</b>\nБоковое меню → <b>Моды</b>: включить / отключить все, версии игры у каждого мода (ваша — зелёным), несколько модов в одном zip.\n\n<b>– Ещё новое</b>\nМожно поменять стики геймпада местами; мышь и геймпад на 1.7.\n\n<b>– Исправления</b>\nСкриншоты на F10 на нативном движке; сборки модов с Prepatcher ставятся одним zip.\n\n<i>Перед обновлением сделайте копию сейвов: боковое меню → Импорт / экспорт сейвов.</i></string>
+    <string name="release_notes_body"><b>– RimWorld 1.7 build 5005</b>\nИгра снова запускается после обновления Ludeon.\n\n<b>– Обновление игры в том же экземпляре</b>\nКарточка экземпляра → ⋮ → <b>Обновить игру</b>: новая сборка 1.7 ставится в тот же экземпляр. Моды, сохранения и настройки остаются; <b>Вернуться на …</b> возвращает прежнюю сборку.\n\n<b>– Steam Workshop</b>\nМастерская прямо в приложении: нажмите ↓ на модах и коллекциях, затем «Скачать».\n\n<b>– Нижнее меню и «Импорт / экспорт»</b>\nГлавная, Игра, Воркшоп, Импорт, Проекты. Сохранения, моды, настройки игры и управление переносятся на одном экране.\n\n<b>– Копирование модов</b>\nЭкран модов → кнопка копирования: выберите моды для другого экземпляра, при желании с тем же порядком загрузки.\n\n<i>Перед обновлением сделайте копию сохранений: нижнее меню → Импорт → Сохранения → Экспорт.</i></string>
     <string name="nav_mods">Моды</string>
     <string name="mods_active">Включённые (%1$d) — в порядке загрузки</string>
     <string name="mods_inactive">Выключенные (%1$d)</string>
@@ -428,4 +428,108 @@
     <string name="transfer_imported">Восстановлено: %1$s → %2$s</string>
     <string name="transfer_import_failed">Не удалось загрузить: %1$s</string>
     <string name="news_title">Новости RimWorld</string>
+
+    <!-- Steam Workshop screen and copying mods to another instance (2026-11) -->
+    <string name="workshop_menu">Steam Workshop</string>
+    <string name="workshop_open_a_mod">Нажмите ↓ на моде, чтобы добавить его в очередь.</string>
+    <string name="workshop_add_to_queue">В очередь</string>
+    <string name="workshop_remove_from_queue">Убрать</string>
+    <string name="workshop_item_id">Предмет Workshop %1$d</string>
+    <string name="workshop_download_queue">Скачать</string>
+    <string name="workshop_download_n">Скачать (%1$d)</string>
+    <string name="workshop_download_busy">Загрузка из Steam уже идёт. Дождитесь её окончания.</string>
+    <string name="workshop_download_title">Скачать: %1$d шт.?</string>
+    <string name="workshop_download_message">%1$s\n\nОни скачиваются по очереди, вход в Steam не нужен. Каждый мод сохраняется как .zip в Download/RimDroid; установите их через «Установить мод / DLC (ZIP)», можно сразу несколько.</string>
+    <string name="workshop_download_many">⚠ Это %1$d модов. Они качаются по одному, это может занять много времени, и каждый займёт примерно вдвое больше своего размера (ZIP-копия в Download плюс установленный мод).</string>
+    <string name="workshop_download_go">Скачать</string>
+    <string name="workshop_clear_queue">Очистить очередь</string>
+    <string name="workshop_text_smaller">Мельче текст</string>
+    <string name="workshop_text_larger">Крупнее текст</string>
+    <string name="workshop_offline">Нет подключения к Steam. Воркшоп работает только онлайн.</string>
+    <string name="workshop_retry">Повторить</string>
+    <string name="mods_copy">Скопировать моды в другой экземпляр</string>
+    <string name="mods_copy_no_target">Нет другого экземпляра, куда можно скопировать.</string>
+    <string name="mods_copy_title">Скопировать моды %1$s в:</string>
+    <string name="mods_copy_order">Ещё и включить те же моды в том же порядке</string>
+    <string name="mods_copy_order_hint">Заменяет список модов другого экземпляра. DLC, которого там нет, пропускается.</string>
+    <string name="mods_copy_go">Скопировать</string>
+    <string name="mods_copy_game_running">Сначала закройте игру: при выходе она перезаписывает список модов.</string>
+    <string name="mods_copy_running">Копирую моды в %1$s</string>
+    <string name="mods_copy_done">Скопировано: %1$d. Уже были, оставлены как есть: %2$d.</string>
+    <string name="mods_copy_order_done">Список модов и их порядок тоже скопированы.</string>
+    <string name="mods_copy_order_failed">Не удалось скопировать список модов.</string>
+    <string name="mods_copy_failed">Не удалось скопировать:</string>
+    <string name="mods_copy_next">Далее</string>
+    <string name="mods_copy_pick_title">Какие моды скопировать в %1$s</string>
+    <string name="mods_copy_already_there">%1$s (уже есть)</string>
+    <string name="mods_copy_none_picked">Не выбрано ни одного мода.</string>
+    <string name="mods_copy_nothing">В этом экземпляре нет скачанных модов для копирования.</string>
+    <string name="mods_copy_uncheck_all">Снять все</string>
+    <string name="mods_copy_check_all">Отметить все</string>
+
+    <!-- Report a bug screen (2026-11) -->
+    <string name="bug_report_intro">Что-то пошло не так? Пришлите нам отчёт. В нём логи игры, по ним мы увидим, что случилось.</string>
+    <string name="bug_report_group_instance">Игра</string>
+    <string name="bug_report_pick_instance">Выберите игру…</string>
+    <string name="bug_report_preparing">Готовлю отчёт…</string>
+    <string name="bug_report_group_email">Отправить по почте</string>
+    <string name="bug_report_steps">1. Выберите игру выше.\n2. Нажмите «Отправить по почте».\n3. В открывшемся списке выберите почтовое приложение (Gmail, Outlook…).\n4. Напишите пару слов о том, что случилось, и отправьте.</string>
+    <string name="bug_report_send_email">Отправить по почте</string>
+    <string name="bug_report_pick_mail">Отправить через</string>
+    <string name="bug_report_no_email_title">На устройстве нет почты?</string>
+    <string name="bug_report_no_email_text">Сохраните отчёт в файл и отправьте его с любого устройства на этот адрес. Приложите файл и напишите пару слов о том, что случилось.</string>
+    <string name="bug_report_copy">Копировать</string>
+    <string name="bug_report_copied">Адрес скопирован</string>
+    <string name="bug_report_save_file">Сохранить отчёт в файл</string>
+    <string name="bug_report_saved">Отчёт сохранён</string>
+    <string name="bug_report_save_failed">Не удалось сохранить отчёт: %1$s</string>
+    <string name="bug_report_no_mail_use_file">На устройстве нет почтового приложения. Сохраните отчёт в файл и отправьте с другого устройства.</string>
+
+    <!-- Update the game in place, with a backup (2026-11) -->
+    <string name="update_menu">Обновить игру</string>
+    <string name="update_current">%1$s: %2$s</string>
+    <string name="update_intro">Ставит в этот экземпляр более новую сборку RimWorld 1.7. Моды, сохранения и настройки остаются. Прежняя сборка и копия сохранений хранятся как резервная копия, чтобы можно было вернуться, если новая не заработает.</string>
+    <string name="update_group_new">Новая сборка</string>
+    <string name="update_no_file">Файл не выбран</string>
+    <string name="update_pick">Выбрать ZIP с игрой</string>
+    <string name="update_go">Обновить</string>
+    <string name="update_group_backup">Резервная копия</string>
+    <string name="update_backup_info">%1$s, сохранена %2$s, вместе с сохранениями того времени.</string>
+    <string name="update_restore">Вернуться на %1$s</string>
+    <string name="update_restore_message">Игра вернётся к резервной копии вместе с её сохранениями. %1$s и текущие сохранения станут резервной копией, так что ничего не пропадёт, и можно будет переключиться обратно.</string>
+    <string name="update_restore_go">Вернуться</string>
+    <string name="update_confirm_title">Обновить игру?</string>
+    <string name="update_confirm_message">Новая сборка RimWorld 1.7 может пока не работать на телефоне (1.7.4995 поначалу падала у всех). Текущая сборка и копия сохранений сохранятся, вернуться можно с этого экрана. Хранится только последняя резервная копия.</string>
+    <string name="update_preparing">Готовлю файл…</string>
+    <string name="update_game_running">Сначала закройте игру.</string>
+
+    <!-- Bottom bar, Import / export and Projects screens (2026-11) -->
+    <string name="bottom_nav_home">Главная</string>
+    <string name="bottom_nav_game">Игра</string>
+    <string name="bottom_nav_workshop">Воркшоп</string>
+    <string name="bottom_nav_transfer">Импорт</string>
+    <string name="bottom_nav_projects">Проекты</string>
+    <string name="transfer_title">Импорт / экспорт</string>
+    <string name="transfer_instance">Экземпляр</string>
+    <string name="transfer_import">Импорт</string>
+    <string name="transfer_export">Экспорт</string>
+    <string name="transfer_saves">Сохранения</string>
+    <string name="transfer_saves_hint">Zip с сохранениями экземпляра: для резервной копии или чтобы перенести в другой экземпляр или на другой телефон. При импорте сохранения с такими же именами заменяются.</string>
+    <string name="transfer_mods">Моды</string>
+    <string name="transfer_mods_hint">Импорт: один или несколько .zip с модами. Экспорт: все скачанные моды экземпляра в одном .zip, который целиком ставится здесь или на другом телефоне.</string>
+    <string name="transfer_mods_exported">Экспортировано модов: %1$d</string>
+    <string name="transfer_settings">Настройки игры</string>
+    <string name="transfer_settings_hint">Параметры, клавиши, список модов и настройки модов. Импорт заменяет текущие настройки экземпляра.</string>
+    <string name="transfer_controls">Экранное управление</string>
+    <string name="transfer_controls_hint">Раскладка управления экземпляра в .json. Иконки не входят: на другом телефоне кнопки покажут подписи, пока там не применят пакет иконок.</string>
+    <string name="transfer_device">Для всего телефона</string>
+    <string name="transfer_device_hint">Свой драйвер Vulkan и пакеты иконок кнопок относятся к телефону, а не к экземпляру.</string>
+    <string name="transfer_driver_button">Свой драйвер</string>
+    <string name="transfer_icons_button">Иконки</string>
+    <string name="projects_title">Другие проекты</string>
+    <string name="projects_reddit_hint">Новости всех моих проектов</string>
+    <string name="projects_download">Скачать</string>
+    <string name="projects_page">Страница</string>
+    <string name="projects_latest_version">Последняя версия: %1$s</string>
+    <string name="projects_here">Вы здесь</string>
 </resources>

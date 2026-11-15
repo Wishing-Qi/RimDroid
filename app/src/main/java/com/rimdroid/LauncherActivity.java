@@ -41,9 +41,11 @@ public class LauncherActivity extends AppCompatActivity {
     private ActivityLauncherBinding binding;
     private NavController navController;
     private AppBarConfiguration appBarConfiguration;
+    /** The screens of the bottom bar (menu_bottom_nav.xml); the bar is shown on these only. */
+    private static final int[] BOTTOM_NAV_DESTINATIONS = {
+            R.id.launcher_fragment, R.id.download_fragment, R.id.workshop_fragment,
+            R.id.transfer_fragment, R.id.projects_fragment};
     private final Handler ui = new Handler(Looper.getMainLooper());
-    private static final String STATE_LOG_INSTANCE = "logExportInstance";
-    private String pendingLogInstanceName;
 
     /**
      * A home-screen shortcut (InstanceShortcuts): start this instance right away, as a tap on its
@@ -86,15 +88,9 @@ public class LauncherActivity extends AppCompatActivity {
     }
 
     private final ActivityResultLauncher<String[]> modZipPicker =
-            registerForActivityResult(new ActivityResultContracts.OpenDocument(),
-                    uri -> { if (uri != null) ContentInstaller.showTargetDialog(this, uri); });
+            registerForActivityResult(new ActivityResultContracts.OpenMultipleDocuments(),
+                    uris -> { if (uris != null && !uris.isEmpty()) ContentInstaller.showTargetDialog(this, uris); });
 
-    private final ActivityResultLauncher<String> exportLogsLauncher =
-            registerForActivityResult(new ActivityResultContracts.CreateDocument("application/zip"),
-                    uri -> {
-                        if (uri != null) exportLogs(uri);
-                        else pendingLogInstanceName = null;
-                    });
 
 
     @Override
@@ -102,9 +98,7 @@ public class LauncherActivity extends AppCompatActivity {
         EdgeToEdge.enable(this);
         super.onCreate(savedInstanceState);
         if (savedInstanceState == null) InstallerService.deleteStaleCopy(this);
-        if (savedInstanceState != null)
-            pendingLogInstanceName = savedInstanceState.getString(STATE_LOG_INSTANCE);
-        else
+        if (savedInstanceState == null)
             readLaunchRequest(getIntent());   // a fresh start from a shortcut, not a recreation
 
         binding = ActivityLauncherBinding.inflate(getLayoutInflater());
@@ -118,13 +112,21 @@ public class LauncherActivity extends AppCompatActivity {
 
         setSupportActionBar(binding.appbar);
 
-        appBarConfiguration = new AppBarConfiguration.Builder(R.id.launcher_fragment)
+        // The bottom bar's screens are top level: the drawer button, not a back arrow.
+        appBarConfiguration = new AppBarConfiguration.Builder(BOTTOM_NAV_DESTINATIONS)
                 .setOpenableLayout(binding.drawerLayout)
                 .build();
 
         navController = Navigation.findNavController(this, R.id.nav_host_fragment);
         NavigationUI.setupActionBarWithNavController(this, navController, appBarConfiguration);
         NavigationUI.setupWithNavController(binding.launcherNv, navController);
+        NavigationUI.setupWithNavController(binding.bottomNav, navController);
+        // The bottom bar only on its own screens (as in Zomdroid): elsewhere it would eat height.
+        navController.addOnDestinationChangedListener((c, dest, args) -> {
+            boolean main = false;
+            for (int d : BOTTOM_NAV_DESTINATIONS) if (d == dest.getId()) main = true;
+            binding.bottomNav.setVisibility(main ? View.VISIBLE : View.GONE);
+        });
         // Refresh the toolbar menu on navigation so the "+" (add instance) shows only on the main screen.
         navController.addOnDestinationChangedListener((c, dest, args) -> invalidateOptionsMenu());
 
@@ -136,6 +138,9 @@ public class LauncherActivity extends AppCompatActivity {
                 return true;
             } else if (id == R.id.action_download_game) {
                 navController.navigate(R.id.action_download_game);
+            } else if (id == R.id.action_open_workshop) {
+                navController.navigate(R.id.action_open_workshop);   // Steam Workshop with a download queue
+                return true;
             } else if (id == R.id.action_cloud_saves) {
                 navController.navigate(R.id.action_cloud_saves);   // pull PC saves from Steam Cloud
                 return true;
@@ -154,15 +159,8 @@ public class LauncherActivity extends AppCompatActivity {
             } else if (id == R.id.action_custom_driver) {
                 navController.navigate(R.id.action_open_custom_driver);   // device-global custom Vulkan driver import
                 return true;
-            } else if (id == R.id.action_saves_transfer) {
-                navController.navigate(R.id.action_saves_transfer);   // import + export of saves, one screen
-                return true;
-            } else if (id == R.id.action_settings_transfer) {
-                navController.navigate(R.id.action_settings_transfer);   // import + export of game settings
-                return true;
-            } else if (id == R.id.action_export_logs) {
-                chooseInstanceThen(gi -> { pendingLogInstanceName = gi.getName();
-                        exportLogsLauncher.launch("rimdroid_logs_" + timestamp() + ".zip"); });
+            } else if (id == R.id.action_open_transfer) {
+                navController.navigate(R.id.action_open_transfer);   // every import and export, one screen
                 return true;
             } else if (id == R.id.action_edit_controls) {
                 // Controls are per instance: the editor asks which one when there are several.
@@ -175,11 +173,8 @@ public class LauncherActivity extends AppCompatActivity {
             } else if (id == R.id.action_icon_packs) {
                 navController.navigate(R.id.action_open_icon_packs);   // button icon packs, applied per instance
                 return true;
-            } else if (id == R.id.action_controls_transfer) {
-                navController.navigate(R.id.action_open_controls_transfer);   // import / export, one screen
-                return true;
             } else if (id == R.id.action_bug_report) {
-                sendBugReport();
+                navController.navigate(R.id.action_open_bug_report);   // one screen: email or save to a file
                 return true;
             }
             // GitHub / X / Reddit / Support are no longer menu rows — they're the icon row in the
@@ -193,12 +188,6 @@ public class LauncherActivity extends AppCompatActivity {
 
         wireHeaderLinks();
         maybeDailyUpdateCheck();
-    }
-
-    @Override
-    protected void onSaveInstanceState(@NonNull Bundle outState) {
-        outState.putString(STATE_LOG_INSTANCE, pendingLogInstanceName);
-        super.onSaveInstanceState(outState);
     }
 
     /** The icon row in the drawer header: the wiki and the external links (icons, not menu rows). */
@@ -257,79 +246,6 @@ public class LauncherActivity extends AppCompatActivity {
         if (mv != null) mv.setMovementMethod(android.text.method.LinkMovementMethod.getInstance());
     }
 
-    /**
-     * Open the user's email app pre-filled with a bug report to the maintainer — with the same log
-     * bundle that "Export logs" produces attached, so a report arrives diagnosable. Building the zip
-     * can touch multi-MB Player.logs, so it runs off the UI thread; the intent fires once it's ready.
-     * If there's no instance (nothing to log) it falls back to a text-only mailto.
-     */
-    private void sendBugReport() {
-        chooseInstanceThen(this::sendBugReport, () -> sendBugReport(null));
-    }
-
-    private void sendBugReport(GameInstance instance) {
-        final java.util.Date now = new java.util.Date();
-        final String date = new java.text.SimpleDateFormat("ddMMyyyy", java.util.Locale.US)
-                .format(now);
-        final String reportName = "rimdroid_report_"
-                + new java.text.SimpleDateFormat("ddMMyyyy_HHmm", java.util.Locale.US).format(now)
-                + ".zip";
-        final String device = "Device: " + android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL
-                + "\nAndroid: " + android.os.Build.VERSION.RELEASE
-                + "\nRimDroid: " + BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")"
-                + (instance != null ? "\nInstance: " + instance.getName() : "");
-        if (instance == null) { startBugReportEmail(date, device, null); return; }
-
-        toast("Preparing bug report…");
-        new Thread(() -> {
-            Uri attach = null;
-            try {
-                java.io.File dir = new java.io.File(getCacheDir(), "reports");
-                if (dir.isDirectory() || dir.mkdirs()) {
-                    java.io.File zip = new java.io.File(dir, reportName);
-                    try (OutputStream out = new java.io.FileOutputStream(zip)) {
-                        LogExporter.export(this, instance, out);
-                    }
-                    if (zip.length() > 0)
-                        attach = androidx.core.content.FileProvider.getUriForFile(
-                                this, "com.rimdroid.fileprovider", zip);
-                }
-            } catch (Throwable t) { attach = null; }   // no logs → still send the text report
-            final Uri fAttach = attach;
-            ui.post(() -> startBugReportEmail(date, device, fAttach));
-        }).start();
-    }
-
-    private void startBugReportEmail(String date, String device, Uri attachment) {
-        String[] to = { getString(R.string.bug_report_email) };
-        String subject = getString(R.string.bug_report_subject, date);
-        String body = getString(R.string.bug_report_body, device);
-        Intent i;
-        if (attachment != null) {
-            // ACTION_SEND carries an attachment (mailto/SENDTO can't). A chooser lets the user pick
-            // their mail app; to/subject/body/zip are all prefilled.
-            i = new Intent(Intent.ACTION_SEND);
-            i.setType("application/zip");
-            i.putExtra(Intent.EXTRA_EMAIL, to);
-            i.putExtra(Intent.EXTRA_SUBJECT, subject);
-            i.putExtra(Intent.EXTRA_TEXT, body);
-            i.putExtra(Intent.EXTRA_STREAM, attachment);
-            i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            try { startActivity(Intent.createChooser(i, getString(R.string.nav_bug_report))); return; }
-            catch (android.content.ActivityNotFoundException ignored) { /* fall through to mailto */ }
-        }
-        // No attachment (or no app took the SEND) → plain mailto, text only.
-        i = new Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:"));
-        i.putExtra(Intent.EXTRA_EMAIL, to);
-        i.putExtra(Intent.EXTRA_SUBJECT, subject);
-        i.putExtra(Intent.EXTRA_TEXT, body);
-        try {
-            startActivity(i);
-        } catch (android.content.ActivityNotFoundException e) {
-            Toast.makeText(this, R.string.bug_report_no_mail, Toast.LENGTH_LONG).show();
-        }
-    }
-
     @Override
     public boolean onSupportNavigateUp() {
         return NavigationUI.navigateUp(navController, appBarConfiguration)
@@ -362,16 +278,18 @@ public class LauncherActivity extends AppCompatActivity {
     /** The wiki section that explains the screen the "?" was pressed on. */
     private static String wikiSectionFor(int destinationId) {
         if (destinationId == R.id.new_instance_fragment)    return "zip-archive";
-        if (destinationId == R.id.download_fragment)        return "steam-in-app";
+        if (destinationId == R.id.download_fragment
+                || destinationId == R.id.update_instance_fragment) return "steam-in-app";
         if (destinationId == R.id.gog_login_fragment)       return "gog";
         if (destinationId == R.id.install_content_fragment
-                || destinationId == R.id.mods_fragment)     return "mods";
+                || destinationId == R.id.mods_fragment
+                || destinationId == R.id.workshop_fragment) return "mods";
         if (destinationId == R.id.cloud_saves_fragment
-                || destinationId == R.id.data_transfer_fragment) return "saves";
+                || destinationId == R.id.transfer_fragment)  return "saves";
         if (destinationId == R.id.settings_fragment)        return "engine";
+        if (destinationId == R.id.bug_report_fragment)      return "report";
         if (destinationId == R.id.driver_fragment)          return "renderers";
-        if (destinationId == R.id.icon_packs_fragment
-                || destinationId == R.id.controls_transfer_fragment) return "controls";
+        if (destinationId == R.id.icon_packs_fragment)      return "controls";
         return "quick-start";   // the main screen, app settings, and any screen added later
     }
 
@@ -591,47 +509,6 @@ public class LauncherActivity extends AppCompatActivity {
             b.setPositiveButton("Open GitHub", (d, w) -> openUrl(getString(R.string.url_github_releases)));
         }
         b.show();
-    }
-
-    /** Export the selected instance's diagnostic logs into a picked, date-stamped .zip. */
-    private void exportLogs(Uri uri) {
-        final String name = pendingLogInstanceName;
-        pendingLogInstanceName = null;
-        if (name == null) {
-            chooseInstanceThen(instance -> exportLogs(uri, instance));
-            return;
-        }
-        GameInstanceManager mgr = GameInstanceManager.requireSingleton();
-        mgr.reload();
-        final GameInstance instance = mgr.getByName(name);
-        if (instance == null) { toast("The selected instance is no longer available."); return; }
-        exportLogs(uri, instance);
-    }
-
-    private void exportLogs(Uri uri, GameInstance instance) {
-        toast("Exporting logs…");
-
-        new Thread(() -> {
-            LogExporter.Result res;
-            try (OutputStream out = getContentResolver().openOutputStream(uri)) {
-                if (out == null) { ui.post(() -> toast("Export failed: cannot open file")); return; }
-                res = LogExporter.export(this, instance, out);
-            } catch (Exception ex) {
-                ui.post(() -> toast("Export failed: " + ex.getMessage()));
-                return;
-            }
-            final LogExporter.Result fr = res;
-            ui.post(() -> toast(fr.ok()
-                    ? "Logs: " + android.text.TextUtils.join(", ", fr.items)
-                        + " (" + (fr.bytes / 1024) + " KB)"
-                    : "Export failed: " + fr.error));
-        }).start();
-    }
-
-    /** yyyyMMdd_HHmmss — keeps each exported log zip uniquely named (no overwrite). */
-    private static String timestamp() {
-        return new java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US)
-                .format(new java.util.Date());
     }
 
     /** Open a URL in the user's browser (community / updates links). */

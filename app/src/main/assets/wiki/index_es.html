@@ -134,6 +134,15 @@
             de la rama unstable, marca también <b>Manifiesto de la rama unstable (beta)</b>. Si no,
             déjalo vacío.
         </p>
+        <p>
+            <b>Una compilación 1.7 más nueva para una instancia que ya tienes:</b> descárgala como
+            arriba y luego, en el menú <b>⋮</b> de la tarjeta de la instancia, toca <b>Actualizar el
+            juego</b> y <b>Actualizar</b> (el zip recién descargado ya está elegido; puedes elegir
+            otro). Los mods, las partidas y los ajustes se quedan. Se guardan la compilación anterior
+            y una copia de las partidas, y <b>Volver a …</b> en la misma pantalla regresa a ellas (la
+            compilación nueva y sus partidas pasan entonces a ser el respaldo). Solo se guarda el
+            último respaldo. Solo para instancias 1.7.
+        </p>
     </section>
 
     <section id="gog">
@@ -222,6 +231,11 @@
             cualquier .zip.</li>
         <li>Una <b>colección del Workshop</b> funciona igual: pega su enlace o ID y se descargan
             todos sus mods.</li>
+        <li><b>Steam Workshop</b>, en el menú lateral, abre el propio Workshop de RimWorld, con la
+            búsqueda y los filtros de Steam. Toca <b>↓</b> en la tarjeta de un mod o colección (o
+            <b>A la cola</b> en su página) y luego <b>Descargar</b>: la cola pasa a <b>Descargas de
+            Steam</b> y se descarga como arriba. <b>A−</b> / <b>A+</b> cambian el tamaño del texto. En
+            <b>Instalar mod / DLC</b> puedes elegir varios .zip a la vez.</li>
         <li><b>Mods</b>, en el menú lateral, muestra los mods de una instancia: arriba los
             <b>Activos</b> en orden de carga, debajo los <b>Inactivos</b>, con un buscador. El
             interruptor activa o desactiva un mod, la papelera borra un mod descargado y un toque
@@ -233,6 +247,11 @@
             cuántos mods se mueven y qué mods necesarios faltan (con su número del Workshop) o están
             desactivados. Para mover un mod a mano, arrástralo por <b>≡</b>; mantenerlo pulsado ofrece
             <b>Mover al principio</b> / <b>Mover al final</b>.</li>
+        <li>El botón de copiar (dos hojas) copia los mods descargados de la instancia a otra
+            instancia; los que ya tiene se dejan como están. Marca <b>Activar también los mismos
+            mods, en el mismo orden</b> para pasarle también la lista de mods (se omite un DLC que no
+            tenga). Ordenar también usa las reglas de orden que los jugadores reunieron para mods que
+            no las declaran (la Community Rules Database de RimSort).</li>
         <li>Los mods que necesitan <b>Harmony</b> funcionan: agrega también el mod Harmony, como en
             PC.</li>
         <li>Se probaron listas de hasta unos 50 mods. Las listas más grandes son terreno sin
@@ -368,7 +387,7 @@
             camera_down, camera_left, camera_right, keyboard, toggle_controls. Un pack.json opcional da
             el nombre: <code>{"format": 1, "name": "Mis iconos"}</code>; añade <code>"tint": false</code>
             para imágenes en color.</li>
-        <li><b>Importar / exportar controles</b>, en el menú lateral, guarda el diseño de una instancia
+        <li>La tarjeta <b>Controles en pantalla</b> de <b>Importar / exportar</b> (barra inferior o menú lateral) guarda el diseño de una instancia
             como archivo .json o lo carga. Los iconos no van en el archivo: en otro teléfono aplica allí
             un paquete de iconos.</li>
     </ul>
@@ -400,10 +419,10 @@
 <section id="saves">
     <h2>Partidas y ajustes</h2>
     <ul>
-        <li><b>Importar / exportar partidas</b>, en el menú lateral, saca y mete
+        <li>La tarjeta <b>Partidas</b> de <b>Importar / exportar</b> (barra inferior o menú lateral) saca y mete
             las partidas de una instancia como un .zip: como copia de seguridad o para llevarlas a
             otra instancia u otro teléfono.</li>
-        <li><b>Importar / exportar ajustes</b> hace lo mismo con los ajustes del
+        <li>La tarjeta <b>Ajustes del juego</b> hace lo mismo con los ajustes del
             juego: opciones, asignación de teclas, la lista de mods y los ajustes de los
             mods.</li>
         <li><b>Partidas en Steam Cloud</b>: si también juegas RimWorld en la PC con Steam, esto
@@ -530,8 +549,9 @@
         problema. RimDroid adjunta sus registros y los datos de tu teléfono a un mensaje para
         nosotros: elige tu app de correo, describe el problema y toca <b>Enviar</b>. Repórtalo
         justo después de que pase, mientras el registro todavía lo guarda.
-        <b>Exportar registros (ZIP)</b> guarda los mismos registros como archivo, por ejemplo para
-        adjuntarlos a un issue en GitHub.
+        Solo aparecen apps de correo. ¿No hay app de correo en el dispositivo? <b>Guardar el reporte
+        en un archivo</b>, en la misma pantalla, guarda los mismos registros como archivo (también
+        para un issue en GitHub): envíalo a la dirección que se muestra allí desde otro dispositivo.
     </p>
     <p>
         Los iconos en la parte superior del menú lateral llevan a las nuevas versiones en GitHub y a
